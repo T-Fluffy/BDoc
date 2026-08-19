@@ -6,6 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import { TableKit } from '@tiptap/extension-table';
 import { TextStyle } from '@tiptap/extension-text-style';
+import FontFamily from '@tiptap/extension-font-family';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import TextAlign from '@tiptap/extension-text-align';
@@ -16,11 +17,27 @@ import { getDocument, updateDocument } from '../../application/services/document
 import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
 import type { Document } from '../../domain/models/DocumentModel';
 
+const TextStyleExt = TextStyle.extend({
+  addAttributes() {
+    return {
+      fontSize: {
+        default: null,
+        parseHTML: (element) => element.style.fontSize || null,
+        renderHTML: (attributes) => {
+          if (!attributes.fontSize) return {};
+          return { style: `font-size: ${attributes.fontSize}` };
+        },
+      },
+    };
+  },
+});
+
 const extensions = [
-  StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+  StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] } }),
   Image,
   TableKit.configure({ table: { resizable: true } }),
-  TextStyle,
+  TextStyleExt,
+  FontFamily,
   Color,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ['heading', 'paragraph'] }),

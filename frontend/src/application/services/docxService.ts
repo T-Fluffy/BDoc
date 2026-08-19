@@ -16,7 +16,8 @@ export const exportDocumentToDocx = async (doc: Document): Promise<void> => {
 };
 
 export const importDocumentFromDocx = async (file: File): Promise<string> => {
-  const { default: mammoth } = await import('mammoth');
-  const result = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
-  return result.value;
+  const form = new FormData();
+  form.append('file', file);
+  const res = await axios.post<{ html: string }>(`${API}/import`, form);
+  return res.data.html;
 };

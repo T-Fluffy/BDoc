@@ -64,4 +64,14 @@ public class DocumentsController : ControllerBase
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             $"{DocxService.SanitizeFileName(doc.Title)}.docx");
     }
+
+    [HttpPost("import")]
+    public async Task<IActionResult> Import(IFormFile file)
+    {
+        if (file is null || file.Length == 0) return BadRequest("No file uploaded");
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        var html = DocxToHtmlService.Convert(ms.ToArray());
+        return Ok(new { html });
+    }
 }

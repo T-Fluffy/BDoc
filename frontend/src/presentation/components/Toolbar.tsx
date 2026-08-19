@@ -102,6 +102,48 @@ export function Toolbar({ editor }: ToolbarProps) {
       <ToolbarButton action={() => editor.chain().focus().toggleHighlight().run()} icon={<FaHighlighter size={13} />} title="Highlight" isActive={editor.isActive('highlight')} />
       <Separator />
 
+      {/* Font family & size */}
+      <select
+        value={editor.getAttributes('textStyle').fontFamily || ''}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v) editor.chain().focus().setFontFamily(v).run();
+          else editor.chain().focus().unsetFontFamily().run();
+        }}
+        title="Font family"
+        className="h-9 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-2 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
+      >
+        <option value="">Font</option>
+        <option value="Arial">Arial</option>
+        <option value="Times New Roman">Times New Roman</option>
+        <option value="Georgia">Georgia</option>
+        <option value="Verdana">Verdana</option>
+        <option value="Courier New">Courier New</option>
+      </select>
+      <select
+        value={editor.getAttributes('textStyle').fontSize || ''}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v) editor.chain().focus().setMark('textStyle', { fontSize: `${v}pt` }).run();
+          else editor.chain().focus().unsetMark('textStyle', { extendEmptyMarkRange: true }).run();
+        }}
+        title="Font size"
+        className="h-9 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-1 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
+      >
+        <option value="">Size</option>
+        <option value="10">10</option>
+        <option value="11">11</option>
+        <option value="12">12</option>
+        <option value="14">14</option>
+        <option value="16">16</option>
+        <option value="18">18</option>
+        <option value="20">20</option>
+        <option value="24">24</option>
+        <option value="28">28</option>
+        <option value="36">36</option>
+      </select>
+      <Separator />
+
       {/* Text color */}
       <div className="relative group">
         <input
