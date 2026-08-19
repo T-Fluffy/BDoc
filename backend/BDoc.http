@@ -1,0 +1,23 @@
+@BDoc_HostAddress = http://localhost:8080
+
+GET {{BDoc_HostAddress}}/api/documents
+Accept: application/json
+
+###
+
+GET {{BDoc_HostAddress}}/api/documents/{id}
+Accept: application/json
+
+###
+
+POST {{BDoc_HostAddress}}/api/documents
+Content-Type: application/json
+
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "title": "New Document",
+  "content": "",
+  "updatedAt": "2026-08-19T00:00:00Z"
+}
+
+###

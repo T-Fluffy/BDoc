@@ -1,0 +1,280 @@
+@import "tailwindcss";
+
+/* ============================================================
+   BDoc Design Tokens — dark by default, light via [data-theme]
+   ============================================================ */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0b1220;
+  --bg-elevated: #111a2e;
+  --surface: #0f172a;
+  --surface-2: #1e293b;
+  --border: rgba(148, 163, 184, 0.14);
+  --border-strong: rgba(148, 163, 184, 0.28);
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgba(59, 130, 246, 0.14);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.12);
+  --success: #22c55e;
+  --workspace: #0d1424;
+  --page-bg: #ffffff;
+  --page-text: #0f172a;
+  --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #eef2f7;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #e2e8f0;
+  --border: rgba(15, 23, 42, 0.1);
+  --border-strong: rgba(15, 23, 42, 0.22);
+  --text: #0f172a;
+  --text-muted: #475569;
+  --text-faint: #94a3b8;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgba(37, 99, 235, 0.1);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --success: #16a34a;
+  --workspace: #dfe5ee;
+  --page-bg: #ffffff;
+  --page-text: #0f172a;
+  --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.14);
+  --shadow-sm: 0 4px 16px rgba(15, 23, 42, 0.08);
+}
+
+/* Editor font preference: [data-font="sans"|"serif"|"mono"] */
+:root,
+[data-font="sans"] {
+  --font-editor: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+[data-font="serif"] {
+  --font-editor: Georgia, "Times New Roman", ui-serif, serif;
+  --font-ui: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+[data-font="mono"] {
+  --font-editor: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+  --font-ui: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@theme inline {
+  --color-canvas: var(--bg);
+  --color-raised: var(--bg-elevated);
+  --color-surface: var(--surface);
+  --color-soft: var(--surface-2);
+  --color-ink: var(--text);
+  --color-ink-muted: var(--text-muted);
+  --color-ink-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-workspace: var(--workspace);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Sleek scrollbars */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-faint);
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* ============================================================
+   Editor page simulation (A4 pages on a workspace background)
+   ============================================================ */
+
+.editor-workspace {
+  background: var(--workspace);
+}
+
+/* A4 page */
+.bdoc-page {
+  width: 210mm;
+  min-height: 297mm;
+  background: var(--page-bg);
+  color: var(--page-text);
+  padding: 25mm;
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-editor);
+  border-radius: 2px;
+}
+
+.bdoc-page .ProseMirror {
+  outline: none;
+  min-height: 247mm; /* page height minus padding */
+  color: var(--page-text);
+}
+
+/* TipTap content typography */
+.bdoc-page .ProseMirror p {
+  margin: 0 0 0.75em;
+  line-height: 1.7;
+}
+.bdoc-page .ProseMirror h1,
+.bdoc-page .ProseMirror h2,
+.bdoc-page .ProseMirror h3 {
+  color: var(--page-text);
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 1em 0 0.5em;
+}
+.bdoc-page .ProseMirror h1 {
+  font-size: 2em;
+}
+.bdoc-page .ProseMirror h2 {
+  font-size: 1.5em;
+}
+.bdoc-page .ProseMirror h3 {
+  font-size: 1.25em;
+}
+.bdoc-page .ProseMirror blockquote {
+  border-left: 3px solid var(--text-faint);
+  padding-left: 1rem;
+  margin-left: 0;
+  color: var(--text-muted);
+}
+.bdoc-page .ProseMirror ul,
+.bdoc-page .ProseMirror ol {
+  padding-left: 1.5rem;
+  margin: 0 0 0.75em;
+}
+.bdoc-page .ProseMirror a {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+.bdoc-page .ProseMirror code {
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 0.9em;
+}
+.bdoc-page .ProseMirror pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+.bdoc-page .ProseMirror pre code {
+  background: transparent;
+  padding: 0;
+}
+.bdoc-page .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--border-strong);
+  margin: 1.5em 0;
+}
+.bdoc-page .ProseMirror img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+.bdoc-page .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0.75em 0;
+  overflow: hidden;
+}
+.bdoc-page .ProseMirror td,
+.bdoc-page .ProseMirror th {
+  border: 1px solid var(--border-strong);
+  padding: 4px 8px;
+  vertical-align: top;
+  min-width: 40px;
+  color: var(--page-text);
+}
+.bdoc-page .ProseMirror th {
+  background: rgba(15, 23, 42, 0.04);
+  font-weight: 600;
+}
+.bdoc-page .ProseMirror .selectedCell:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
+/* TipTap placeholders & selection */
+.bdoc-page .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-faint);
+  pointer-events: none;
+  height: 0;
+}
+
+/* Print */
+@media print {
+  body {
+    background: #fff;
+    overflow: visible;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .editor-workspace {
+    background: #fff;
+    padding: 0;
+  }
+  .bdoc-page {
+    box-shadow: none;
+    margin: 0;
+    width: auto;
+    padding: 0;
+    min-height: 0;
+  }
+  .bdoc-page .ProseMirror {
+    min-height: 0;
+  }
+}

@@ -1,0 +1,47 @@
+name: bdoc
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: bdoc-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bdoc
+      POSTGRES_PASSWORD: bdoc_password
+      POSTGRES_DB: bdoc
+    volumes:
+      - bdoc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bdoc -d bdoc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: bdoc-backend
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=bdoc;Username=bdoc;Password=bdoc_password"
+      Cors__Origins__0: "http://localhost:5173"
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: bdoc-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  bdoc_pgdata:
