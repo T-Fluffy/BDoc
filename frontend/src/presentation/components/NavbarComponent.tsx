@@ -5,11 +5,17 @@ import {
   FaBars,
   FaCog,
   FaFileAlt,
+  FaFileImport,
+  FaFileWord,
   FaImage,
   FaMoon,
+  FaPlus,
+  FaPrint,
   FaSignOutAlt,
+  FaSpinner,
   FaSun,
   FaTable,
+  FaTimesCircle,
   FaUserCircle,
 } from 'react-icons/fa';
 import { useTheme } from '../theme/useTheme';
@@ -18,30 +24,59 @@ interface NavbarProps {
   editor?: Editor | null;
   onToggleSidebar: () => void;
   onOpenSettings: () => void;
+  onNew?: () => void;
+  onImport?: () => void;
+  onExport?: () => void;
+  onPrint?: () => void;
+  onCloseDocument?: () => void;
+  exporting?: boolean;
+  importing?: boolean;
 }
 
-export default function NavbarComponent({ editor, onToggleSidebar, onOpenSettings }: NavbarProps) {
+export default function NavbarComponent({
+  editor,
+  onToggleSidebar,
+  onOpenSettings,
+  onNew,
+  onImport,
+  onExport,
+  onPrint,
+  onCloseDocument,
+  exporting,
+  importing,
+}: NavbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { mode, setMode } = useTheme();
-  const [menu, setMenu] = useState<'insert' | 'user' | null>(null);
+  const [menu, setMenu] = useState<'insert' | 'file' | 'user' | null>(null);
 
   const isEditing = location.pathname.includes('/editor/');
+
+  const closeMenu = () => setMenu(null);
 
   const addImage = () => {
     const url = window.prompt('Enter image URL');
     if (url && editor) editor.chain().focus().setImage({ src: url }).run();
-    setMenu(null);
+    closeMenu();
   };
 
   const addTable = () => {
     if (editor) editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-    setMenu(null);
+    closeMenu();
   };
 
   const insertOptions = [
     { label: 'Insert Image', icon: <FaImage />, action: addImage },
     { label: 'Insert Table', icon: <FaTable />, action: addTable },
+  ];
+
+  const fileOptions = [
+    { label: 'New', icon: <FaPlus />, action: () => { onNew?.(); closeMenu(); }, hide: false },
+    { label: 'Import Word document (.docx)', icon: importing ? <FaSpinner className="animate-spin" /> : <FaFileImport />, action: () => { onImport?.(); closeMenu(); }, hide: false },
+    { label: 'Download as Word document (.docx)', icon: exporting ? <FaSpinner className="animate-spin" /> : <FaFileWord />, action: () => { onExport?.(); closeMenu(); }, hide: false },
+    { label: 'Print / Export to PDF', icon: <FaPrint />, action: () => { onPrint?.(); closeMenu(); }, hide: false },
+    { label: 'divider', icon: null, action: () => {}, hide: false },
+    { label: 'Close document', icon: <FaTimesCircle />, action: () => { onCloseDocument?.(); closeMenu(); }, hide: false },
   ];
 
   const handleLogout = () => {
@@ -84,6 +119,46 @@ export default function NavbarComponent({ editor, onToggleSidebar, onOpenSetting
         {isEditing && (
           <div className="relative">
             <button
+              onClick={() => setMenu(menu === 'file' ? null : 'file')}
+              className={`ml-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all border ${
+                menu === 'file'
+                  ? 'bg-accent-soft text-accent border-[var(--border-strong)]'
+                  : 'bg-soft/60 text-ink-muted hover:text-ink border-[var(--border)]'
+              }`}
+            >
+              File
+            </button>
+
+            {menu === 'file' && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+                <div className="absolute left-0 mt-2 w-64 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150 z-50">
+                  <div className="p-1.5">
+                    {fileOptions.map((opt) =>
+                      opt.label === 'divider' ? (
+                        <div key="divider" className="my-1 border-t border-[var(--border)]" />
+                      ) : (
+                        <button
+                          key={opt.label}
+                          onClick={opt.action}
+                          disabled={Boolean(importing || exporting)}
+                          className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-ink-muted hover:text-ink hover:bg-soft transition-colors disabled:opacity-60"
+                        >
+                          <span className="text-accent">{opt.icon}</span>
+                          {opt.label}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {isEditing && (
+          <div className="relative">
+            <button
               onClick={() => setMenu(menu === 'insert' ? null : 'insert')}
               className={`ml-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all border ${
                 menu === 'insert'
@@ -95,20 +170,23 @@ export default function NavbarComponent({ editor, onToggleSidebar, onOpenSetting
             </button>
 
             {menu === 'insert' && (
-              <div className="absolute left-0 mt-2 w-48 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150">
-                <div className="p-1.5">
-                  {insertOptions.map((opt) => (
-                    <button
-                      key={opt.label}
-                      onClick={opt.action}
-                      className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-ink-muted hover:text-ink hover:bg-soft transition-colors"
-                    >
-                      <span className="text-accent">{opt.icon}</span>
-                      {opt.label}
-                    </button>
-                  ))}
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+                <div className="absolute left-0 mt-2 w-48 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150 z-50">
+                  <div className="p-1.5">
+                    {insertOptions.map((opt) => (
+                      <button
+                        key={opt.label}
+                        onClick={opt.action}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-ink-muted hover:text-ink hover:bg-soft transition-colors"
+                      >
+                        <span className="text-accent">{opt.icon}</span>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         )}

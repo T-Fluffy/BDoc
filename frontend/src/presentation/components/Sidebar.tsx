@@ -1,5 +1,5 @@
-import { useNavigate } from 'react-router-dom';
-import { FaFileAlt, FaPlus, FaTimes } from 'react-icons/fa';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { FaFileAlt, FaPlus, FaTimes, FaWindowClose } from 'react-icons/fa';
 import { useDocuments } from '../../application/usecases/useDocument';
 import { useState } from 'react';
 
@@ -10,8 +10,11 @@ interface Props {
 
 export default function Sidebar({ open, onClose }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { documents, loading, create } = useDocuments();
   const [creating, setCreating] = useState(false);
+
+  const isEditing = location.pathname.includes('/editor/');
 
   const handleCreate = async () => {
     setCreating(true);
@@ -85,6 +88,22 @@ export default function Sidebar({ open, onClose }: Props) {
             </button>
           ))}
         </div>
+
+        {isEditing && (
+          <div className="px-3 pb-3 pt-2 border-t border-[var(--border)]">
+            <button
+              onClick={() => {
+                navigate('/');
+                onClose();
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-ink-muted hover:bg-soft hover:text-ink transition-colors"
+              title="Close the current document"
+            >
+              <FaWindowClose size={13} className="shrink-0 text-ink-faint" />
+              Close document
+            </button>
+          </div>
+        )}
       </aside>
     </>
   );

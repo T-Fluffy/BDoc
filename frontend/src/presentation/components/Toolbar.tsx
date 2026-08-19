@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
 import {
   FaAlignCenter,
@@ -13,12 +13,14 @@ import {
   FaListOl,
   FaListUl,
   FaPalette,
+  FaParagraph,
   FaQuoteRight,
   FaRedo,
   FaStrikethrough,
   FaTable,
   FaUndo,
 } from 'react-icons/fa';
+import ParagraphMenu from './ParagraphMenu';
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -52,6 +54,8 @@ function ToolbarButton({ action, icon, title, isActive = false }: ToolbarButtonP
 const Separator = () => <div className="w-px h-6 bg-[var(--border)] mx-1 shrink-0" />;
 
 export function Toolbar({ editor }: ToolbarProps) {
+  const [paraOpen, setParaOpen] = useState(false);
+
   if (!editor) return null;
 
   const promptLink = () => {
@@ -185,6 +189,25 @@ export function Toolbar({ editor }: ToolbarProps) {
       <ToolbarButton action={() => editor.chain().focus().setTextAlign('center').run()} icon={<FaAlignCenter size={13} />} title="Align center" isActive={editor.isActive({ textAlign: 'center' })} />
       <ToolbarButton action={() => editor.chain().focus().setTextAlign('right').run()} icon={<FaAlignRight size={13} />} title="Align right" isActive={editor.isActive({ textAlign: 'right' })} />
       <ToolbarButton action={() => editor.chain().focus().setTextAlign('justify').run()} icon={<FaAlignJustify size={13} />} title="Justify" isActive={editor.isActive({ textAlign: 'justify' })} />
+      <Separator />
+
+      {/* Paragraph format */}
+      <div className="relative">
+        <ToolbarButton
+          action={() => setParaOpen((o) => !o)}
+          icon={<FaParagraph size={13} />}
+          title="Paragraph format"
+          isActive={paraOpen}
+        />
+        {paraOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setParaOpen(false)} />
+            <div className="absolute left-0 top-full mt-1 w-60 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] p-3 z-50 animate-in fade-in zoom-in duration-150">
+              <ParagraphMenu editor={editor} onClose={() => setParaOpen(false)} />
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

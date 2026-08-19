@@ -29,7 +29,9 @@ A full-stack, Google-Docs-style document editor with a customizable dark-first U
 
 - **Rich-text editing** (TipTap v3): headings, bold/italic/underline/strike, inline code, highlight, text color, lists, quotes, code blocks, tables, images, links, and alignment.
 - **Word compatibility** — import `.docx` files and export documents as `.docx` (HTML ↔ OpenXML on the server). Import preserves fonts, font sizes, colors, highlight, bold/italic/underline/strike, alignment, nested lists, tables, images and links — ready for Microsoft Word / LibreOffice.
-- **A4 page simulation** with print/PDF export.
+- **File menu** — a Word-style `File` menu in the header with New, Import Word, Download as Word, Print / Export to PDF and Close document.
+- **Paragraph format** — per-paragraph line spacing, space before / after, left indent and first-line indent from a toolbar dropdown.
+- **Word document simulation** — A4 pages with editable margins, print / PDF export via the browser.
 - **Dark theme by default**, fully customizable:
   - Light/dark toggle
   - Accent color (10 presets + custom picker)

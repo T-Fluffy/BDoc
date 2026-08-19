@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Paragraph from '@tiptap/extension-paragraph';
+import Heading from '@tiptap/extension-heading';
 import Image from '@tiptap/extension-image';
 import { TableKit } from '@tiptap/extension-table';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -10,11 +12,12 @@ import FontFamily from '@tiptap/extension-font-family';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import TextAlign from '@tiptap/extension-text-align';
-import { FaFileImport, FaFileWord, FaPrint, FaSpinner } from 'react-icons/fa';
+import { FaSpinner } from 'react-icons/fa';
 import AppLayout from '../layout/AppLayout';
 import { Toolbar } from '../components/Toolbar';
 import { getDocument, updateDocument } from '../../application/services/documentService';
 import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
+import { useDocuments } from '../../application/usecases/useDocument';
 import type { Document } from '../../domain/models/DocumentModel';
 
 const TextStyleExt = TextStyle.extend({
@@ -32,8 +35,46 @@ const TextStyleExt = TextStyle.extend({
   },
 });
 
+const blockSpacingAttrs = () => ({
+  lineHeight: {
+    default: null,
+    parseHTML: (element: HTMLElement) => element.style.lineHeight || null,
+    renderHTML: (attributes: Record<string, string>) =>
+      attributes.lineHeight ? { style: `line-height: ${attributes.lineHeight}` } : {},
+  },
+  marginTop: {
+    default: null,
+    parseHTML: (element: HTMLElement) => element.style.marginTop || null,
+    renderHTML: (attributes: Record<string, string>) =>
+      attributes.marginTop ? { style: `margin-top: ${attributes.marginTop}` } : {},
+  },
+  marginBottom: {
+    default: null,
+    parseHTML: (element: HTMLElement) => element.style.marginBottom || null,
+    renderHTML: (attributes: Record<string, string>) =>
+      attributes.marginBottom ? { style: `margin-bottom: ${attributes.marginBottom}` } : {},
+  },
+  textIndent: {
+    default: null,
+    parseHTML: (element: HTMLElement) => element.style.textIndent || null,
+    renderHTML: (attributes: Record<string, string>) =>
+      attributes.textIndent ? { style: `text-indent: ${attributes.textIndent}` } : {},
+  },
+  paddingLeft: {
+    default: null,
+    parseHTML: (element: HTMLElement) => element.style.paddingLeft || null,
+    renderHTML: (attributes: Record<string, string>) =>
+      attributes.paddingLeft ? { style: `padding-left: ${attributes.paddingLeft}` } : {},
+  },
+});
+
+const ParagraphSpacing = Paragraph.extend({ addAttributes: blockSpacingAttrs });
+const HeadingSpacing = Heading.extend({ addAttributes: blockSpacingAttrs });
+
 const extensions = [
-  StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] } }),
+  StarterKit.configure({ heading: false, paragraph: false }),
+  ParagraphSpacing,
+  HeadingSpacing.configure({ levels: [1, 2, 3, 4, 5, 6] }),
   Image,
   TableKit.configure({ table: { resizable: true } }),
   TextStyleExt,
@@ -47,6 +88,8 @@ type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved';
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { create } = useDocuments();
   const [document, setDocument] = useState<Document | null>(null);
   const [title, setTitle] = useState('Untitled');
   const [loading, setLoading] = useState(true);
@@ -202,6 +245,15 @@ export default function EditorPage() {
     }
   };
 
+  const handleNew = async () => {
+    const doc = await create('Untitled document');
+    navigate(`/editor/${doc.id}`);
+  };
+
+  const handleClose = () => {
+    navigate('/');
+  };
+
   const statusLabel =
     saveStatus === 'saving' ? (
       <span className="flex items-center gap-1.5">
@@ -216,7 +268,16 @@ export default function EditorPage() {
     );
 
   return (
-    <AppLayout editor={editor}>
+    <AppLayout
+      editor={editor}
+      onNew={handleNew}
+      onImport={() => fileInputRef.current?.click()}
+      onExport={handleExport}
+      onPrint={() => window.print()}
+      onCloseDocument={handleClose}
+      exporting={exporting}
+      importing={importing}
+    >
       <div className="min-h-full flex flex-col items-center pb-24 editor-workspace">
         {/* Document header */}
         <div className="w-full max-w-[210mm] px-6 pt-8 no-print">
@@ -227,31 +288,6 @@ export default function EditorPage() {
               placeholder="Untitled"
               className="flex-1 bg-transparent text-3xl font-bold text-ink placeholder:text-ink-faint focus:outline-none"
             />
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={importing}
-                className="p-2.5 rounded-xl bg-surface border border-[var(--border)] text-ink-muted hover:text-ink hover:bg-soft transition-colors disabled:opacity-60"
-                title="Import Word document (.docx)"
-              >
-                {importing ? <FaSpinner className="animate-spin" /> : <FaFileImport />}
-              </button>
-              <button
-                onClick={handleExport}
-                disabled={exporting}
-                className="p-2.5 rounded-xl bg-surface border border-[var(--border)] text-ink-muted hover:text-ink hover:bg-soft transition-colors disabled:opacity-60"
-                title="Download as Word document (.docx)"
-              >
-                {exporting ? <FaSpinner className="animate-spin" /> : <FaFileWord />}
-              </button>
-              <button
-                onClick={() => window.print()}
-                className="p-2.5 rounded-xl bg-surface border border-[var(--border)] text-ink-muted hover:text-ink hover:bg-soft transition-colors"
-                title="Print / export to PDF"
-              >
-                <FaPrint />
-              </button>
-            </div>
           </div>
           <input
             ref={fileInputRef}

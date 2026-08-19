@@ -7,9 +7,26 @@ import SettingsDrawer from '../components/SettingsDrawer';
 interface AppLayoutProps {
   children: ReactNode;
   editor?: Editor | null;
+  onNew?: () => void;
+  onImport?: () => void;
+  onExport?: () => void;
+  onPrint?: () => void;
+  onCloseDocument?: () => void;
+  exporting?: boolean;
+  importing?: boolean;
 }
 
-export default function AppLayout({ children, editor }: AppLayoutProps) {
+export default function AppLayout({
+  children,
+  editor,
+  onNew,
+  onImport,
+  onExport,
+  onPrint,
+  onCloseDocument,
+  exporting,
+  importing,
+}: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -19,6 +36,13 @@ export default function AppLayout({ children, editor }: AppLayoutProps) {
         editor={editor}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onNew={onNew}
+        onImport={onImport}
+        onExport={onExport}
+        onPrint={onPrint}
+        onCloseDocument={onCloseDocument}
+        exporting={exporting}
+        importing={importing}
       />
 
       <div className="flex-1 flex min-h-0">
