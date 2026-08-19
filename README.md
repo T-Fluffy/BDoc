@@ -11,6 +11,20 @@ A full-stack, Google-Docs-style document editor with a customizable dark-first U
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)
 ![Postgres](https://img.shields.io/badge/postgres-17-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
 
+## 📸 Demo
+
+| Login | Document Library |
+| :---: | :---: |
+| ![Login](demo/01-login.png) | ![Library (dark)](demo/02-library-dark.png) |
+
+| Editor (dark) | Settings |
+| :---: | :---: |
+| ![Editor (dark)](demo/03-editor-dark.png) | ![Settings](demo/04-settings-dark.png) |
+
+| Library (light) | Editor (light) |
+| :---: | :---: |
+| ![Library (light)](demo/05-library-light.png) | ![Editor (light)](demo/06-editor-light.png) |
+
 ## ✨ Features
 
 - **Rich-text editing** (TipTap v3): headings, bold/italic/underline/strike, inline code, highlight, text color, lists, quotes, code blocks, tables, images, links, and alignment.
