@@ -87,13 +87,15 @@ export default function NavbarComponent({
   return (
     <nav className="h-14 shrink-0 bg-canvas/80 backdrop-blur-xl border-b border-[var(--border)] px-4 flex items-center justify-between relative z-[100] no-print">
       <div className="flex items-center gap-2">
-        <button
-          onClick={onToggleSidebar}
-          className="lg:hidden p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-soft transition-colors"
-          aria-label="Toggle sidebar"
-        >
-          <FaBars />
-        </button>
+        {isEditing && (
+          <button
+            onClick={onToggleSidebar}
+            className="lg:hidden p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-soft transition-colors"
+            aria-label="Toggle sidebar"
+          >
+            <FaBars />
+          </button>
+        )}
 
         <button
           onClick={() => navigate('/')}

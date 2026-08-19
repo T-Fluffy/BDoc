@@ -11,7 +11,7 @@ interface Props {
 export default function Sidebar({ open, onClose }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { documents, loading, create } = useDocuments();
+  const { documents, loading, create, remove } = useDocuments();
   const [creating, setCreating] = useState(false);
 
   const isEditing = location.pathname.includes('/editor/');
@@ -24,6 +24,12 @@ export default function Sidebar({ open, onClose }: Props) {
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Delete this document?')) return;
+    await remove(id);
+    if (location.pathname.includes(id)) navigate('/');
   };
 
   return (
@@ -75,17 +81,28 @@ export default function Sidebar({ open, onClose }: Props) {
           )}
 
           {documents.map((doc) => (
-            <button
+            <div
               key={doc.id}
-              onClick={() => {
-                navigate(`/editor/${doc.id}`);
-                onClose();
-              }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-ink-muted hover:bg-soft hover:text-ink transition-colors group text-left"
+              className="group flex items-center rounded-lg hover:bg-soft transition-colors"
             >
-              <FaFileAlt size={12} className="shrink-0 text-ink-faint group-hover:text-accent" />
-              <span className="truncate">{doc.title || 'Untitled'}</span>
-            </button>
+              <button
+                onClick={() => {
+                  navigate(`/editor/${doc.id}`);
+                  onClose();
+                }}
+                className="flex-1 flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-ink-muted hover:text-ink transition-colors text-left min-w-0"
+              >
+                <FaFileAlt size={12} className="shrink-0 text-ink-faint group-hover:text-accent" />
+                <span className="truncate">{doc.title || 'Untitled'}</span>
+              </button>
+              <button
+                onClick={() => handleDelete(doc.id)}
+                className="p-2 mr-1 rounded-md text-ink-faint opacity-0 group-hover:opacity-100 hover:text-danger hover:bg-danger-soft transition-all shrink-0"
+                title="Delete document"
+              >
+                <FaTimes size={11} />
+              </button>
+            </div>
           ))}
         </div>
 

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import NavbarComponent from '../components/NavbarComponent';
 import Sidebar from '../components/Sidebar';
@@ -29,6 +30,8 @@ export default function AppLayout({
 }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const location = useLocation();
+  const isEditing = location.pathname.includes('/editor/');
 
   return (
     <div className="h-full w-full flex flex-col bg-canvas text-ink overflow-hidden">
@@ -46,7 +49,7 @@ export default function AppLayout({
       />
 
       <div className="flex-1 flex min-h-0">
-        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        {isEditing && <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
         <main className="flex-1 relative overflow-y-auto overflow-x-hidden min-w-0">
           {children}
