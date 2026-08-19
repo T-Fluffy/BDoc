@@ -1,5 +1,6 @@
 using BDoc.Domain.Entities;
 using BDoc.Domain.Interfaces;
+using BDoc.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BDoc.Controllers;
@@ -51,5 +52,16 @@ public class DocumentsController : ControllerBase
     {
         await _repository.DeleteAsync(id);
         return NoContent();
+    }
+
+    [HttpGet("{id}/export")]
+    public async Task<IActionResult> Export(Guid id)
+    {
+        var doc = await _repository.GetByIdAsync(id);
+        var bytes = await DocxService.ToDocxAsync(doc.Content);
+        return File(
+            bytes,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            $"{DocxService.SanitizeFileName(doc.Title)}.docx");
     }
 }

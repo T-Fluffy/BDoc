@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -8,10 +9,11 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import TextAlign from '@tiptap/extension-text-align';
-import { FaPrint, FaSpinner } from 'react-icons/fa';
+import { FaFileImport, FaFileWord, FaPrint, FaSpinner } from 'react-icons/fa';
 import AppLayout from '../layout/AppLayout';
 import { Toolbar } from '../components/Toolbar';
 import { getDocument, updateDocument } from '../../application/services/documentService';
+import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
 import type { Document } from '../../domain/models/DocumentModel';
 
 const extensions = [
@@ -33,6 +35,9 @@ export default function EditorPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const editor = useEditor({
     extensions,
@@ -146,6 +151,40 @@ export default function EditorPage() {
     scheduleSave();
   };
 
+  const handleImport = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !editor) return;
+    setImporting(true);
+    try {
+      const html = await importDocumentFromDocx(file);
+      editor.commands.setContent(html || '<p></p>');
+      const name = file.name.replace(/\.docx$/i, '');
+      if (name) setTitle(name);
+      setSaveStatus('dirty');
+      scheduleSave();
+    } catch {
+      window.alert('Could not import this Word document.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleExport = async () => {
+    const doc = docRef.current;
+    if (!doc) return;
+    setExporting(true);
+    try {
+      await save();
+      const fresh = await getDocument(doc.id);
+      await exportDocumentToDocx({ ...fresh, title: titleRef.current });
+    } catch {
+      window.alert('Could not export the document.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const statusLabel =
     saveStatus === 'saving' ? (
       <span className="flex items-center gap-1.5">
@@ -171,14 +210,39 @@ export default function EditorPage() {
               placeholder="Untitled"
               className="flex-1 bg-transparent text-3xl font-bold text-ink placeholder:text-ink-faint focus:outline-none"
             />
-            <button
-              onClick={() => window.print()}
-              className="p-2.5 rounded-xl bg-surface border border-[var(--border)] text-ink-muted hover:text-ink hover:bg-soft transition-colors"
-              title="Print / export to PDF"
-            >
-              <FaPrint />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+                className="p-2.5 rounded-xl bg-surface border border-[var(--border)] text-ink-muted hover:text-ink hover:bg-soft transition-colors disabled:opacity-60"
+                title="Import Word document (.docx)"
+              >
+                {importing ? <FaSpinner className="animate-spin" /> : <FaFileImport />}
+              </button>
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="p-2.5 rounded-xl bg-surface border border-[var(--border)] text-ink-muted hover:text-ink hover:bg-soft transition-colors disabled:opacity-60"
+                title="Download as Word document (.docx)"
+              >
+                {exporting ? <FaSpinner className="animate-spin" /> : <FaFileWord />}
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="p-2.5 rounded-xl bg-surface border border-[var(--border)] text-ink-muted hover:text-ink hover:bg-soft transition-colors"
+                title="Print / export to PDF"
+              >
+                <FaPrint />
+              </button>
+            </div>
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            className="hidden"
+            onChange={handleImport}
+          />
           <div className="flex items-center gap-2 text-xs text-ink-faint mb-4">
             <span className={`w-1.5 h-1.5 rounded-full ${saveStatus === 'dirty' ? 'bg-amber-400' : saveStatus === 'saving' ? 'bg-accent' : saveStatus === 'saved' ? 'bg-success' : 'bg-ink-faint'}`} />
             {statusLabel}

@@ -28,6 +28,7 @@ A full-stack, Google-Docs-style document editor with a customizable dark-first U
 ## ✨ Features
 
 - **Rich-text editing** (TipTap v3): headings, bold/italic/underline/strike, inline code, highlight, text color, lists, quotes, code blocks, tables, images, links, and alignment.
+- **Word compatibility** — import `.docx` files (Mammoth) and export documents as `.docx` (HTML → OpenXML), ready for Microsoft Word / LibreOffice.
 - **A4 page simulation** with print/PDF export.
 - **Dark theme by default**, fully customizable:
   - Light/dark toggle
