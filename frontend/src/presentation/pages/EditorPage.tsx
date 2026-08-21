@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Node, Editor } from '@tiptap/core';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Paragraph from '@tiptap/extension-paragraph';
@@ -78,6 +79,35 @@ const blockSpacingAttrs = () => ({
 const ParagraphSpacing = Paragraph.extend({ addAttributes: blockSpacingAttrs });
 const HeadingSpacing = Heading.extend({ addAttributes: blockSpacingAttrs });
 
+// Invisible spacer node that marks a page boundary (keeps content from spilling
+// into the gap/margins between sheets). Height is driven by --page-gap so it
+// matches the on-screen sheet geometry.
+const PageBreak = Node.create({
+  name: 'pageBreak',
+  group: 'block',
+  atom: true,
+  selectable: false,
+  draggable: false,
+  parseHTML() {
+    return [{ tag: 'div.page-break' }];
+  },
+  renderHTML() {
+    return ['div', { class: 'page-break', 'data-page-break': 'true' }];
+  },
+});
+
+const GAP_MM = 12;
+const PX_PER_MM = 96 / 25.4;
+
+// Remove the visual-only page-break spacers before persisting/exporting content.
+function stripPageBreaks(html: string): string {
+  if (typeof document === 'undefined') return html;
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('.page-break').forEach((el) => el.remove());
+  return div.innerHTML;
+}
+
 const extensions = [
   StarterKit.configure({ heading: false, paragraph: false }),
   ParagraphSpacing,
@@ -89,6 +119,7 @@ const extensions = [
   Color,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  PageBreak,
 ];
 
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved';
@@ -108,6 +139,7 @@ export default function EditorPage() {
   const pageSettingsRef = useRef<PageSettings>(DEFAULT_PAGE_SETTINGS);
   const [pageCount, setPageCount] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<Editor | null>(null);
 
   const measurePages = useCallback(() => {
     const pm = window.document.querySelector('.bdoc-page .ProseMirror') as HTMLElement | null;
@@ -122,6 +154,106 @@ export default function EditorPage() {
     setPageCount((prev) => (prev === needed ? prev : needed));
   }, []);
 
+  // Real pagination: insert/remove invisible page-break spacers so content breaks
+  // onto the next sheet (with margins + gap) instead of spilling into the gaps.
+  const paginate = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const view = editor.view;
+    const pm = view.dom as HTMLElement;
+    const s = pageSettingsRef.current;
+    const dims = PAGE_DIMENSIONS_MM[s.size];
+    const pageH = s.orientation === 'landscape' ? dims.w : dims.h;
+    const pageM = MARGIN_MM[s.margins];
+    const innerPx = Math.max(1, (pageH - 2 * pageM) * PX_PER_MM);
+    const domChildren = Array.from(pm.children) as HTMLElement[];
+    const { doc, schema } = editor.state;
+    if (domChildren.length !== doc.childCount) {
+      window.setTimeout(() => paginate(), 60);
+      return;
+    }
+
+    // Decide which top-level content nodes (0-based among content nodes) need a
+    // page break before them.
+    let acc = 0;
+    let first = true;
+    let ci = 0;
+    const desiredBreaks = new Set<number>();
+    for (let i = 0; i < doc.childCount; i++) {
+      const node = doc.child(i);
+      if (node.type.name === 'pageBreak') continue; // spacer, not content
+      const el = domChildren[i];
+      let h = 0;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        h = r.height + parseFloat(cs.marginTop || '0') + parseFloat(cs.marginBottom || '0');
+      }
+      if (!first && acc + h > innerPx) {
+        desiredBreaks.add(ci);
+        acc = 0;
+      }
+      acc += h;
+      first = false;
+      ci++;
+    }
+
+    // Current leading breaks expressed as content indices.
+    const currentBreaks = new Set<number>();
+    let cj = 0;
+    for (let i = 0; i < doc.childCount; i++) {
+      const node = doc.child(i);
+      if (node.type.name === 'pageBreak') {
+        currentBreaks.add(cj);
+        continue;
+      }
+      cj++;
+    }
+    const same = currentBreaks.size === desiredBreaks.size && [...currentBreaks].every((c) => desiredBreaks.has(c));
+    if (same) return;
+
+    // Remove all existing page breaks (last to first so positions stay valid).
+    let tr = editor.state.tr;
+    let pos = 0;
+    const delPos: number[] = [];
+    for (let i = 0; i < doc.childCount; i++) {
+      const before = pos;
+      const node = doc.child(i);
+      if (node.type.name === 'pageBreak') delPos.push(before);
+      pos += node.nodeSize;
+    }
+    for (let k = delPos.length - 1; k >= 0; k--) {
+      tr = tr.delete(delPos[k], delPos[k] + 1);
+    }
+
+    // Position before each content node (in the now break-free doc), then insert
+    // the desired breaks from highest position to lowest.
+    let running = 0;
+    const posBeforeContent: Record<number, number> = {};
+    let ck = 0;
+    for (let i = 0; i < doc.childCount; i++) {
+      const node = doc.child(i);
+      if (node.type.name === 'pageBreak') continue;
+      posBeforeContent[ck] = running + 1;
+      running += node.nodeSize;
+      ck++;
+    }
+    const desired = Array.from(desiredBreaks).sort((a, b) => b - a);
+    for (const c of desired) {
+      const p = posBeforeContent[c];
+      if (typeof p === 'number') {
+        tr = tr.insert(p, schema.nodes.pageBreak.create());
+      }
+    }
+    if (tr.docChanged) editor.view.dispatch(tr);
+  }, []);
+
+  const paginateTimer = useRef<number | null>(null);
+  const schedulePaginate = useCallback(() => {
+    if (paginateTimer.current) window.clearTimeout(paginateTimer.current);
+    paginateTimer.current = window.setTimeout(() => paginate(), 120);
+  }, [paginate]);
+
   const editor = useEditor({
     extensions,
     content: '<p></p>',
@@ -130,8 +262,10 @@ export default function EditorPage() {
       setSaveStatus('dirty');
       scheduleSave();
       measurePages();
+      schedulePaginate();
     },
   });
+  editorRef.current = editor;
 
   const docRef = useRef<Document | null>(null);
   const titleRef = useRef(title);
@@ -178,9 +312,26 @@ export default function EditorPage() {
     if (editor && document) {
       editor.commands.setContent(document.content || '<p></p>');
       window.setTimeout(measurePages, 80);
+      window.setTimeout(schedulePaginate, 120);
+      window.setTimeout(schedulePaginate, 400);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, document?.id]);
+
+  // Re-paginate after images load (height changes without an editor update) and
+  // when the viewport (column width) changes.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom as HTMLElement;
+    const onMedia = () => schedulePaginate();
+    dom.addEventListener('load', onMedia, true);
+    const onResize = () => schedulePaginate();
+    window.addEventListener('resize', onResize);
+    return () => {
+      dom.removeEventListener('load', onMedia, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [editor, schedulePaginate]);
 
   const save = useCallback(async () => {
     const doc = docRef.current;
@@ -195,7 +346,7 @@ export default function EditorPage() {
       await updateDocument({
         ...doc,
         title: titleRef.current,
-        content: editor.getHTML(),
+        content: stripPageBreaks(editor.getHTML()),
         settings: JSON.stringify(pageSettingsRef.current),
       });
       setSaveStatus('saved');
@@ -246,6 +397,8 @@ export default function EditorPage() {
     setSaveStatus('dirty');
     scheduleSave();
     window.setTimeout(measurePages, 0);
+    window.setTimeout(schedulePaginate, 0);
+    window.setTimeout(schedulePaginate, 250);
   };
 
   const handleImport = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -274,7 +427,11 @@ export default function EditorPage() {
     try {
       await save();
       const fresh = await getDocument(doc.id);
-      await exportDocumentToDocx({ ...fresh, title: titleRef.current });
+      await exportDocumentToDocx({
+        ...fresh,
+        title: titleRef.current,
+        content: stripPageBreaks(fresh.content || ''),
+      });
     } catch {
       window.alert('Could not export the document.');
     } finally {
@@ -304,13 +461,14 @@ export default function EditorPage() {
       'Ready'
     );
 
-  const gapMm = 12;
+  const gapMm = GAP_MM;
   const dims = PAGE_DIMENSIONS_MM[pageSettings.size];
   const pageW = pageSettings.orientation === 'landscape' ? dims.h : dims.w;
   const pageH = pageSettings.orientation === 'landscape' ? dims.w : dims.h;
   const pageM = MARGIN_MM[pageSettings.margins];
   const unitMm = pageH + gapMm;
-  const stackHeightMm = Math.max(pageH, pageCount * unitMm - gapMm);
+  const stackHeightMm = Math.max(pageH, pageCount * pageH + Math.max(0, pageCount - 1) * gapMm);
+  const spacerPx = (2 * pageM + gapMm) * PX_PER_MM;
 
   return (
     <AppLayout
@@ -391,6 +549,8 @@ export default function EditorPage() {
                   minHeight: 0,
                   boxShadow: 'none',
                   borderRadius: 0,
+                  overflow: 'visible',
+                  ['--page-gap' as string]: `${spacerPx}px`,
                 }}
               >
                 <EditorContent editor={editor} />

@@ -155,6 +155,12 @@
   color: var(--page-text);
 }
 
+/* Invisible page-boundary spacer (height driven by --page-gap to match sheets) */
+.page-break {
+  display: block;
+  height: var(--page-gap, 0);
+}
+
 /* TipTap content typography */
 .bdoc-page .ProseMirror p {
   margin: 0 0 0.75em;
@@ -266,15 +272,25 @@
   .editor-workspace {
     background: #fff;
     padding: 0;
+    overflow: visible;
+  }
+  .page-sheet {
+    display: none !important;
   }
   .bdoc-page {
+    position: static !important;
+    height: auto !important;
+    width: 100% !important;
     box-shadow: none;
     margin: 0;
-    width: auto;
-    padding: 0;
+    padding: 0 !important;
     min-height: 0;
   }
   .bdoc-page .ProseMirror {
     min-height: 0;
+  }
+  .page-break {
+    break-after: page;
+    height: 0 !important;
   }
 }
