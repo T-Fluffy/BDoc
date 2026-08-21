@@ -33,7 +33,7 @@ export const PAGE_DIMENSIONS_MM: Record<PageSize, { w: number; h: number }> = {
   A1: { w: 594, h: 841 },
 };
 
-const MARGIN_MM: Record<MarginPreset, number> = {
+export const MARGIN_MM: Record<MarginPreset, number> = {
   narrow: 12,
   normal: 20,
   wide: 30,

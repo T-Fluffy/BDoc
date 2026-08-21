@@ -21,7 +21,8 @@ import { useDocuments } from '../../application/usecases/useDocument';
 import type { Document } from '../../domain/models/DocumentModel';
 import {
   DEFAULT_PAGE_SETTINGS,
-  resolvePageStyle,
+  PAGE_DIMENSIONS_MM,
+  MARGIN_MM,
   parsePageSettings,
   type PageSettings,
 } from '../../domain/models/PageSettings';
@@ -105,7 +106,21 @@ export default function EditorPage() {
   const [importing, setImporting] = useState(false);
   const [pageSettings, setPageSettings] = useState<PageSettings>(DEFAULT_PAGE_SETTINGS);
   const pageSettingsRef = useRef<PageSettings>(DEFAULT_PAGE_SETTINGS);
+  const [pageCount, setPageCount] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const measurePages = useCallback(() => {
+    const pm = window.document.querySelector('.bdoc-page .ProseMirror') as HTMLElement | null;
+    if (!pm) return;
+    const contentMm = (pm.scrollHeight * 25.4) / 96;
+    const s = pageSettingsRef.current;
+    const dims = PAGE_DIMENSIONS_MM[s.size];
+    const h = s.orientation === 'landscape' ? dims.w : dims.h;
+    const m = MARGIN_MM[s.margins];
+    const inner = Math.max(1, h - 2 * m);
+    const needed = Math.max(1, Math.ceil(contentMm / inner));
+    setPageCount((prev) => (prev === needed ? prev : needed));
+  }, []);
 
   const editor = useEditor({
     extensions,
@@ -114,6 +129,7 @@ export default function EditorPage() {
     onUpdate: () => {
       setSaveStatus('dirty');
       scheduleSave();
+      measurePages();
     },
   });
 
@@ -161,6 +177,7 @@ export default function EditorPage() {
   useEffect(() => {
     if (editor && document) {
       editor.commands.setContent(document.content || '<p></p>');
+      window.setTimeout(measurePages, 80);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, document?.id]);
@@ -228,6 +245,7 @@ export default function EditorPage() {
     pageSettingsRef.current = next;
     setSaveStatus('dirty');
     scheduleSave();
+    window.setTimeout(measurePages, 0);
   };
 
   const handleImport = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -273,8 +291,6 @@ export default function EditorPage() {
     navigate('/');
   };
 
-  const pageStyle = resolvePageStyle(pageSettings);
-
   const statusLabel =
     saveStatus === 'saving' ? (
       <span className="flex items-center gap-1.5">
@@ -287,6 +303,14 @@ export default function EditorPage() {
     ) : (
       'Ready'
     );
+
+  const gapMm = 12;
+  const dims = PAGE_DIMENSIONS_MM[pageSettings.size];
+  const pageW = pageSettings.orientation === 'landscape' ? dims.h : dims.w;
+  const pageH = pageSettings.orientation === 'landscape' ? dims.w : dims.h;
+  const pageM = MARGIN_MM[pageSettings.margins];
+  const unitMm = pageH + gapMm;
+  const stackHeightMm = Math.max(pageH, pageCount * unitMm - gapMm);
 
   return (
     <AppLayout
@@ -301,8 +325,8 @@ export default function EditorPage() {
       pageSettings={pageSettings}
       onPageSettingsChange={handlePageSettingsChange}
     >
-      <div className="editor-workspace min-h-full overflow-auto pb-24">
-        <div className="mx-auto flex flex-col items-stretch" style={{ width: pageStyle.width }}>
+      <div className="editor-workspace min-h-full overflow-auto pb-16">
+        <div className="mx-auto flex flex-col items-stretch" style={{ width: `${pageW}mm` }}>
           {/* Document header */}
           <div className="px-6 pt-8 no-print">
             <div className="flex items-center gap-3 mb-2">
@@ -331,7 +355,7 @@ export default function EditorPage() {
             <Toolbar editor={editor} />
           </div>
 
-          {/* Editor page */}
+          {/* Paginated document */}
           {loading ? (
             <div className="px-6 py-20 flex justify-center text-ink-muted">
               <span className="flex items-center gap-2">
@@ -343,8 +367,34 @@ export default function EditorPage() {
               {loadError}
             </div>
           ) : (
-            <div className="bdoc-page" style={pageStyle}>
-              <EditorContent editor={editor} />
+            <div className="relative w-full" style={{ height: `${stackHeightMm}mm` }}>
+              {Array.from({ length: pageCount }).map((_, i) => (
+                <div
+                  key={i}
+                  aria-hidden
+                  className="page-sheet absolute left-0 top-0 bg-[var(--page-bg)] border border-[var(--border)] rounded-[2px] shadow-[var(--shadow-lg)] pointer-events-none"
+                  style={{
+                    top: `${i * unitMm}mm`,
+                    height: `${pageH}mm`,
+                    width: `${pageW}mm`,
+                    padding: `${pageM}mm`,
+                  }}
+                />
+              ))}
+              <div
+                className="bdoc-page absolute left-0 top-0"
+                style={{
+                  width: `${pageW}mm`,
+                  height: `${stackHeightMm}mm`,
+                  padding: `${pageM}mm ${pageM}mm 0 ${pageM}mm`,
+                  background: 'transparent',
+                  minHeight: 0,
+                  boxShadow: 'none',
+                  borderRadius: 0,
+                }}
+              >
+                <EditorContent editor={editor} />
+              </div>
             </div>
           )}
         </div>
