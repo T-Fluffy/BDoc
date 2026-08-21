@@ -160,18 +160,14 @@ export default function EditorPage() {
       return;
     }
 
-    // Decide which top-level content nodes (0-based among content nodes) need a
-    // page break before them.
-    let acc = 0;
-    let first = true;
-    let ci = 0;
-    const desiredBreaks = new Set<number>();
+    // Measure every content block's height, then compute the ideal page breaks
+    // with a greedy packer. This depends ONLY on block heights (not on where
+    // breaks currently are), so it is idempotent: re-running after breaks are
+    // inserted yields the same result — no oscillation / runaway page creation.
+    const heights: number[] = [];
     for (let i = 0; i < doc.childCount; i++) {
       const node = doc.child(i);
-      if (node.type.name === 'pageBreak') {
-        acc = 0; // a real page boundary was here; next block starts a fresh page
-        continue;
-      }
+      if (node.type.name === 'pageBreak') continue; // spacer, not content
       const el = domChildren[i];
       let h = 0;
       if (el) {
@@ -179,13 +175,16 @@ export default function EditorPage() {
         const cs = getComputedStyle(el);
         h = r.height + parseFloat(cs.marginTop || '0') + parseFloat(cs.marginBottom || '0');
       }
-      if (!first && acc + h > innerPx) {
-        desiredBreaks.add(ci);
-        acc = 0;
+      heights.push(h);
+    }
+    const desiredBreaks = new Set<number>();
+    let used = 0;
+    for (let i = 0; i < heights.length; i++) {
+      if (i > 0 && used + heights[i] > innerPx) {
+        desiredBreaks.add(i);
+        used = 0;
       }
-      acc += h;
-      first = false;
-      ci++;
+      used += heights[i];
     }
     // The number of pages is exactly (breaks + 1); drive the sheet stack from this
     // instead of a scrollHeight measurement (which was off by one).
