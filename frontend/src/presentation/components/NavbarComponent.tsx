@@ -19,6 +19,7 @@ import {
   FaUserCircle,
 } from 'react-icons/fa';
 import { useTheme } from '../theme/useTheme';
+import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
   editor?: Editor | null;
@@ -48,6 +49,7 @@ export default function NavbarComponent({
   const navigate = useNavigate();
   const location = useLocation();
   const { mode, setMode } = useTheme();
+  const { logout } = useAuth();
   const [menu, setMenu] = useState<'insert' | 'file' | 'user' | null>(null);
 
   const isEditing = location.pathname.includes('/editor/');
@@ -80,7 +82,7 @@ export default function NavbarComponent({
   ];
 
   const handleLogout = () => {
-    localStorage.removeItem('bdoc-auth');
+    logout();
     navigate('/login');
   };
 
