@@ -141,19 +141,6 @@ export default function EditorPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
 
-  const measurePages = useCallback(() => {
-    const pm = window.document.querySelector('.bdoc-page .ProseMirror') as HTMLElement | null;
-    if (!pm) return;
-    const contentMm = (pm.scrollHeight * 25.4) / 96;
-    const s = pageSettingsRef.current;
-    const dims = PAGE_DIMENSIONS_MM[s.size];
-    const h = s.orientation === 'landscape' ? dims.w : dims.h;
-    const m = MARGIN_MM[s.margins];
-    const inner = Math.max(1, h - 2 * m);
-    const needed = Math.max(1, Math.ceil(contentMm / inner));
-    setPageCount((prev) => (prev === needed ? prev : needed));
-  }, []);
-
   // Real pagination: insert/remove invisible page-break spacers so content breaks
   // onto the next sheet (with margins + gap) instead of spilling into the gaps.
   const paginate = useCallback(() => {
@@ -181,7 +168,10 @@ export default function EditorPage() {
     const desiredBreaks = new Set<number>();
     for (let i = 0; i < doc.childCount; i++) {
       const node = doc.child(i);
-      if (node.type.name === 'pageBreak') continue; // spacer, not content
+      if (node.type.name === 'pageBreak') {
+        acc = 0; // a real page boundary was here; next block starts a fresh page
+        continue;
+      }
       const el = domChildren[i];
       let h = 0;
       if (el) {
@@ -197,6 +187,12 @@ export default function EditorPage() {
       first = false;
       ci++;
     }
+    // The number of pages is exactly (breaks + 1); drive the sheet stack from this
+    // instead of a scrollHeight measurement (which was off by one).
+    setPageCount((prev) => {
+      const next = desiredBreaks.size + 1;
+      return prev === next ? prev : next;
+    });
 
     // Current leading breaks expressed as content indices.
     const currentBreaks = new Set<number>();
@@ -246,7 +242,7 @@ export default function EditorPage() {
       }
     }
     if (tr.docChanged) editor.view.dispatch(tr);
-  }, []);
+  }, [setPageCount]);
 
   const paginateTimer = useRef<number | null>(null);
   const schedulePaginate = useCallback(() => {
@@ -261,7 +257,6 @@ export default function EditorPage() {
     onUpdate: () => {
       setSaveStatus('dirty');
       scheduleSave();
-      measurePages();
       schedulePaginate();
     },
   });
@@ -311,7 +306,6 @@ export default function EditorPage() {
   useEffect(() => {
     if (editor && document) {
       editor.commands.setContent(document.content || '<p></p>');
-      window.setTimeout(measurePages, 80);
       window.setTimeout(schedulePaginate, 120);
       window.setTimeout(schedulePaginate, 400);
     }
@@ -396,7 +390,6 @@ export default function EditorPage() {
     pageSettingsRef.current = next;
     setSaveStatus('dirty');
     scheduleSave();
-    window.setTimeout(measurePages, 0);
     window.setTimeout(schedulePaginate, 0);
     window.setTimeout(schedulePaginate, 250);
   };
