@@ -58,7 +58,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Export(Guid id)
     {
         var doc = await _repository.GetByIdAsync(id);
-        var bytes = await DocxService.ToDocxAsync(doc.Content);
+        var bytes = await DocxService.ToDocxAsync(doc.Content, doc.Settings);
         return File(
             bytes,
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

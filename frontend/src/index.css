@@ -151,7 +151,7 @@
 
 .bdoc-page .ProseMirror {
   outline: none;
-  min-height: 247mm; /* page height minus padding */
+  min-height: 100%;
   color: var(--page-text);
 }
 

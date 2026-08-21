@@ -31,6 +31,7 @@ A full-stack, Google-Docs-style document editor with a customizable dark-first U
 - **Word compatibility** — import `.docx` files and export documents as `.docx` (HTML ↔ OpenXML on the server). Import preserves fonts, font sizes, colors, highlight, bold/italic/underline/strike, alignment, nested lists, tables, images and links — ready for Microsoft Word / LibreOffice.
 - **File menu** — a Word-style `File` menu in the header with New, Import Word, Download as Word, Print / Export to PDF and Close document.
 - **Paragraph format** — per-paragraph line spacing, space before / after, left indent and first-line indent from a toolbar dropdown.
+- **Page format** — a `Page` menu in the header sets paper size (A5/A4/A3/A2/A1), orientation (portrait/landscape) and margins (narrow/normal/wide). Settings persist per document and are applied to the Word export.
 - **Word document simulation** — A4 pages with editable margins, print / PDF export via the browser.
 - **Dark theme by default**, fully customizable:
   - Light/dark toggle

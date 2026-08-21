@@ -20,6 +20,11 @@ import {
 } from 'react-icons/fa';
 import { useTheme } from '../theme/useTheme';
 import { useAuth } from '../context/AuthContext';
+import {
+  PAGE_SIZES,
+  MARGIN_PRESETS,
+  type PageSettings,
+} from '../../domain/models/PageSettings';
 
 interface NavbarProps {
   editor?: Editor | null;
@@ -32,6 +37,8 @@ interface NavbarProps {
   onCloseDocument?: () => void;
   exporting?: boolean;
   importing?: boolean;
+  pageSettings?: PageSettings;
+  onPageSettingsChange?: (next: PageSettings) => void;
 }
 
 export default function NavbarComponent({
@@ -45,12 +52,20 @@ export default function NavbarComponent({
   onCloseDocument,
   exporting,
   importing,
+  pageSettings,
+  onPageSettingsChange,
 }: NavbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { mode, setMode } = useTheme();
   const { logout } = useAuth();
-  const [menu, setMenu] = useState<'insert' | 'file' | 'user' | null>(null);
+  const [menu, setMenu] = useState<'insert' | 'file' | 'page' | 'user' | null>(null);
+
+  const updatePage = (patch: Partial<PageSettings>) => {
+    if (pageSettings && onPageSettingsChange) {
+      onPageSettingsChange({ ...pageSettings, ...patch });
+    }
+  };
 
   const isEditing = location.pathname.includes('/editor/');
 
@@ -154,6 +169,70 @@ export default function NavbarComponent({
                       ),
                     )}
                   </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+{isEditing && pageSettings && (
+          <div className="relative">
+            <button
+              onClick={() => setMenu(menu === 'page' ? null : 'page')}
+              className={`ml-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all border ${
+                menu === 'page'
+                  ? 'bg-accent-soft text-accent border-[var(--border-strong)]'
+                  : 'bg-soft/60 text-ink-muted hover:text-ink border-[var(--border)]'
+              }`}
+            >
+              Page
+            </button>
+
+            {menu === 'page' && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+                <div className="absolute left-0 mt-2 w-56 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] p-3 z-50 animate-in fade-in zoom-in duration-150">
+                  <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2.5 text-center">
+                    Page format
+                  </p>
+
+                  <label className="block mb-3">
+                    <span className="text-[10px] uppercase tracking-widest text-ink-faint block mb-1">Page size</span>
+                    <select
+                      value={pageSettings.size}
+                      onChange={(e) => updatePage({ size: e.target.value as PageSettings['size'] })}
+                      className="w-full h-8 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-2 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
+                    >
+                      {PAGE_SIZES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block mb-3">
+                    <span className="text-[10px] uppercase tracking-widest text-ink-faint block mb-1">Orientation</span>
+                    <select
+                      value={pageSettings.orientation}
+                      onChange={(e) => updatePage({ orientation: e.target.value as PageSettings['orientation'] })}
+                      className="w-full h-8 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-2 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
+                    >
+                      <option value="portrait">Portrait</option>
+                      <option value="landscape">Landscape</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="text-[10px] uppercase tracking-widest text-ink-faint block mb-1">Margins</span>
+                    <select
+                      value={pageSettings.margins}
+                      onChange={(e) => updatePage({ margins: e.target.value as PageSettings['margins'] })}
+                      className="w-full h-8 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-2 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
+                    >
+                      {MARGIN_PRESETS.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               </>
             )}

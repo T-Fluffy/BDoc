@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/react';
 import NavbarComponent from '../components/NavbarComponent';
 import Sidebar from '../components/Sidebar';
 import SettingsDrawer from '../components/SettingsDrawer';
+import type { PageSettings } from '../../domain/models/PageSettings';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -15,6 +16,8 @@ interface AppLayoutProps {
   onCloseDocument?: () => void;
   exporting?: boolean;
   importing?: boolean;
+  pageSettings?: PageSettings;
+  onPageSettingsChange?: (next: PageSettings) => void;
 }
 
 export default function AppLayout({
@@ -27,6 +30,8 @@ export default function AppLayout({
   onCloseDocument,
   exporting,
   importing,
+  pageSettings,
+  onPageSettingsChange,
 }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -46,6 +51,8 @@ export default function AppLayout({
         onCloseDocument={onCloseDocument}
         exporting={exporting}
         importing={importing}
+        pageSettings={pageSettings}
+        onPageSettingsChange={onPageSettingsChange}
       />
 
       <div className="flex-1 flex min-h-0">

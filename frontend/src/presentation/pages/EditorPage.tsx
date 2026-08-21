@@ -19,6 +19,12 @@ import { getDocument, updateDocument } from '../../application/services/document
 import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
 import { useDocuments } from '../../application/usecases/useDocument';
 import type { Document } from '../../domain/models/DocumentModel';
+import {
+  DEFAULT_PAGE_SETTINGS,
+  resolvePageStyle,
+  parsePageSettings,
+  type PageSettings,
+} from '../../domain/models/PageSettings';
 
 const TextStyleExt = TextStyle.extend({
   addAttributes() {
@@ -97,6 +103,8 @@ export default function EditorPage() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [pageSettings, setPageSettings] = useState<PageSettings>(DEFAULT_PAGE_SETTINGS);
+  const pageSettingsRef = useRef<PageSettings>(DEFAULT_PAGE_SETTINGS);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const editor = useEditor({
@@ -134,6 +142,9 @@ export default function EditorPage() {
         if (cancelled) return;
         setDocument(doc);
         setTitle(doc.title || 'Untitled');
+        const parsed = parsePageSettings(doc.settings);
+        setPageSettings(parsed);
+        pageSettingsRef.current = parsed;
       })
       .catch(() => {
         if (!cancelled) setLoadError('Document not found');
@@ -168,6 +179,7 @@ export default function EditorPage() {
         ...doc,
         title: titleRef.current,
         content: editor.getHTML(),
+        settings: JSON.stringify(pageSettingsRef.current),
       });
       setSaveStatus('saved');
     } catch {
@@ -207,6 +219,13 @@ export default function EditorPage() {
 
   const handleTitleChange = (value: string) => {
     setTitle(value);
+    setSaveStatus('dirty');
+    scheduleSave();
+  };
+
+  const handlePageSettingsChange = (next: PageSettings) => {
+    setPageSettings(next);
+    pageSettingsRef.current = next;
     setSaveStatus('dirty');
     scheduleSave();
   };
@@ -254,6 +273,8 @@ export default function EditorPage() {
     navigate('/');
   };
 
+  const pageStyle = resolvePageStyle(pageSettings);
+
   const statusLabel =
     saveStatus === 'saving' ? (
       <span className="flex items-center gap-1.5">
@@ -277,52 +298,56 @@ export default function EditorPage() {
       onCloseDocument={handleClose}
       exporting={exporting}
       importing={importing}
+      pageSettings={pageSettings}
+      onPageSettingsChange={handlePageSettingsChange}
     >
-      <div className="min-h-full flex flex-col items-center pb-24 editor-workspace">
-        {/* Document header */}
-        <div className="w-full max-w-[210mm] px-6 pt-8 no-print">
-          <div className="flex items-center gap-3 mb-2">
+      <div className="editor-workspace min-h-full overflow-auto pb-24">
+        <div className="mx-auto flex flex-col items-stretch" style={{ width: pageStyle.width }}>
+          {/* Document header */}
+          <div className="px-6 pt-8 no-print">
+            <div className="flex items-center gap-3 mb-2">
+              <input
+                value={title}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                placeholder="Untitled"
+                className="flex-1 bg-transparent text-3xl font-bold text-ink placeholder:text-ink-faint focus:outline-none"
+              />
+            </div>
             <input
-              value={title}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="Untitled"
-              className="flex-1 bg-transparent text-3xl font-bold text-ink placeholder:text-ink-faint focus:outline-none"
+              ref={fileInputRef}
+              type="file"
+              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              className="hidden"
+              onChange={handleImport}
             />
+            <div className="flex items-center gap-2 text-xs text-ink-faint mb-4">
+              <span className={`w-1.5 h-1.5 rounded-full ${saveStatus === 'dirty' ? 'bg-amber-400' : saveStatus === 'saving' ? 'bg-accent' : saveStatus === 'saved' ? 'bg-success' : 'bg-ink-faint'}`} />
+              {statusLabel}
+            </div>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            className="hidden"
-            onChange={handleImport}
-          />
-          <div className="flex items-center gap-2 text-xs text-ink-faint mb-4">
-            <span className={`w-1.5 h-1.5 rounded-full ${saveStatus === 'dirty' ? 'bg-amber-400' : saveStatus === 'saving' ? 'bg-accent' : saveStatus === 'saved' ? 'bg-success' : 'bg-ink-faint'}`} />
-            {statusLabel}
-          </div>
-        </div>
 
-        {/* Toolbar */}
-        <div className="sticky top-0 z-50 w-full max-w-[210mm] px-4 pt-2 pb-4 bg-gradient-to-b from-workspace via-workspace/95 to-transparent no-print">
-          <Toolbar editor={editor} />
-        </div>
+          {/* Toolbar */}
+          <div className="sticky top-0 z-50 px-4 pt-2 pb-4 bg-gradient-to-b from-workspace via-workspace/95 to-transparent no-print">
+            <Toolbar editor={editor} />
+          </div>
 
-        {/* Editor page */}
-        {loading ? (
-          <div className="w-full max-w-[210mm] px-6 py-20 flex justify-center text-ink-muted">
-            <span className="flex items-center gap-2">
-              <FaSpinner className="animate-spin" /> Loading document…
-            </span>
-          </div>
-        ) : loadError ? (
-          <div className="w-full max-w-[210mm] px-6 py-20 text-center text-danger">
-            {loadError}
-          </div>
-        ) : (
-          <div className="bdoc-page">
-            <EditorContent editor={editor} />
-          </div>
-        )}
+          {/* Editor page */}
+          {loading ? (
+            <div className="px-6 py-20 flex justify-center text-ink-muted">
+              <span className="flex items-center gap-2">
+                <FaSpinner className="animate-spin" /> Loading document…
+              </span>
+            </div>
+          ) : loadError ? (
+            <div className="px-6 py-20 text-center text-danger">
+              {loadError}
+            </div>
+          ) : (
+            <div className="bdoc-page" style={pageStyle}>
+              <EditorContent editor={editor} />
+            </div>
+          )}
+        </div>
       </div>
     </AppLayout>
   );
