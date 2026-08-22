@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaClock, FaFileAlt, FaPlus, FaSearch, FaTrash } from 'react-icons/fa';
 import AppLayout from '../layout/AppLayout';
 import { useDocuments } from '../../application/usecases/useDocument';
+import { importDocumentFromDocx } from '../../application/services/docxService';
+import { createDocument, updateDocument } from '../../application/services/documentService';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -20,6 +23,8 @@ export default function Home() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { documents, loading, error, create, remove } = useDocuments();
 
   const filteredDocs = documents.filter((doc) =>
@@ -41,8 +46,26 @@ export default function Home() {
     await remove(id);
   };
 
+  const handleImport = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImporting(true);
+    try {
+      const html = await importDocumentFromDocx(file);
+      const name = file.name.replace(/\.docx$/i, '') || 'Imported document';
+      const doc = await createDocument(name);
+      await updateDocument({ ...doc, content: html || '<p></p>', title: name });
+      navigate(`/editor/${doc.id}`);
+    } catch {
+      window.alert('Could not import this Word document.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
-    <AppLayout>
+    <AppLayout onNew={handleCreate} onImport={() => fileInputRef.current?.click()} importing={importing}>
       <div className="max-w-7xl mx-auto px-6 py-10">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
@@ -141,6 +164,7 @@ export default function Home() {
           </div>
         )}
       </div>
+      <input ref={fileInputRef} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={handleImport} />
     </AppLayout>
   );
 }

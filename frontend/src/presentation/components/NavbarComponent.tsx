@@ -135,8 +135,7 @@ export default function NavbarComponent({
           </button>
         )}
 
-        {isEditing && (
-          <div className="relative">
+        <div className="relative">
             <button
               onClick={() => setMenu(menu === 'file' ? null : 'file')}
               className={`ml-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all border ${
@@ -153,8 +152,9 @@ export default function NavbarComponent({
                 <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
                 <div className="absolute left-0 mt-2 w-64 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150 z-50">
                   <div className="p-1.5">
-                    {fileOptions.map((opt) =>
-                      opt.label === 'divider' ? (
+                    {fileOptions.map((opt) => {
+                      if (!isEditing && !['New', 'Import Word document (.docx)'].includes(opt.label)) return null;
+                      return opt.label === 'divider' ? (
                         <div key="divider" className="my-1 border-t border-[var(--border)]" />
                       ) : (
                         <button
@@ -166,16 +166,15 @@ export default function NavbarComponent({
                           <span className="text-accent">{opt.icon}</span>
                           {opt.label}
                         </button>
-                      ),
-                    )}
+                      );
+                    })}
                   </div>
                 </div>
               </>
             )}
           </div>
-        )}
 
-{isEditing && pageSettings && (
+        {isEditing && pageSettings && (
           <div className="relative">
             <button
               onClick={() => setMenu(menu === 'page' ? null : 'page')}
