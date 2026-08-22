@@ -140,6 +140,8 @@ export default function EditorPage() {
   const [pageCount, setPageCount] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
+  const isComposingRef = useRef(false);
+  const lastPaginateDispatchRef = useRef<number>(0);
 
   // Real pagination: insert/remove invisible page-break spacers so content breaks
   // onto the next sheet (with margins + gap) instead of spilling into the gaps.
@@ -186,12 +188,6 @@ export default function EditorPage() {
       }
       used += heights[i];
     }
-    // The number of pages is exactly (breaks + 1); drive the sheet stack from this
-    // instead of a scrollHeight measurement (which was off by one).
-    setPageCount((prev) => {
-      const next = desiredBreaks.size + 1;
-      return prev === next ? prev : next;
-    });
 
     // Current leading breaks expressed as content indices.
     const currentBreaks = new Set<number>();
@@ -204,10 +200,30 @@ export default function EditorPage() {
       }
       cj++;
     }
+    // Idempotent check: if the desired breaks are the same as the current ones,
+    // there is nothing to do — skip dispatch and setPageCount to avoid a loop.
     const same = currentBreaks.size === desiredBreaks.size && [...currentBreaks].every((c) => desiredBreaks.has(c));
     if (same) return;
 
+    // Guard: skip pagination dispatch if user is composing (IME) or if we dispatched
+    // too recently (prevents rapid re-dispatch loops that can interfere with typing).
+    const now = Date.now();
+    if (isComposingRef.current) return;
+    if (now - lastPaginateDispatchRef.current < 500) {
+      window.setTimeout(() => paginate(), 500);
+      return;
+    }
+
+    // The number of pages is exactly (breaks + 1); drive the sheet stack from this
+    // instead of a scrollHeight measurement (which was off by one).
+    setPageCount((prev) => {
+      const next = desiredBreaks.size + 1;
+      return prev === next ? prev : next;
+    });
+
     // Remove all existing page breaks (last to first so positions stay valid).
+    // Top-level doc content is indexed from 0 (the doc's own tokens are not
+    // counted), so the first child starts at position 0.
     let tr = editor.state.tr;
     let pos = 0;
     const delPos: number[] = [];
@@ -229,7 +245,7 @@ export default function EditorPage() {
     for (let i = 0; i < doc.childCount; i++) {
       const node = doc.child(i);
       if (node.type.name === 'pageBreak') continue;
-      posBeforeContent[ck] = running + 1;
+      posBeforeContent[ck] = running;
       running += node.nodeSize;
       ck++;
     }
@@ -240,7 +256,10 @@ export default function EditorPage() {
         tr = tr.insert(p, schema.nodes.pageBreak.create());
       }
     }
-    if (tr.docChanged) editor.view.dispatch(tr);
+    if (tr.docChanged) {
+      lastPaginateDispatchRef.current = Date.now();
+      editor.view.dispatch(tr);
+    }
   }, [setPageCount]);
 
   const paginateTimer = useRef<number | null>(null);
@@ -260,6 +279,21 @@ export default function EditorPage() {
     },
   });
   editorRef.current = editor;
+
+  // Track IME composition to avoid paginating during active composition
+  useEffect(() => {
+    if (!editor) return;
+    const view = editor.view;
+    const dom = view.dom;
+    const onCompositionStart = () => { isComposingRef.current = true; };
+    const onCompositionEnd = () => { isComposingRef.current = false; };
+    dom.addEventListener('compositionstart', onCompositionStart);
+    dom.addEventListener('compositionend', onCompositionEnd);
+    return () => {
+      dom.removeEventListener('compositionstart', onCompositionStart);
+      dom.removeEventListener('compositionend', onCompositionEnd);
+    };
+  }, [editor]);
 
   const docRef = useRef<Document | null>(null);
   const titleRef = useRef(title);
@@ -400,11 +434,10 @@ export default function EditorPage() {
     setImporting(true);
     try {
       const html = await importDocumentFromDocx(file);
-      editor.commands.setContent(html || '<p></p>');
       const name = file.name.replace(/\.docx$/i, '');
-      if (name) setTitle(name);
-      setSaveStatus('dirty');
-      scheduleSave();
+      const doc = await create(name);
+      await editor.commands.setContent(html || '<p></p>');
+      navigate(`/editor/${doc.id}`);
     } catch {
       window.alert('Could not import this Word document.');
     } finally {
