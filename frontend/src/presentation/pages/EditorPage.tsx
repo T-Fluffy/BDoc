@@ -138,6 +138,9 @@ export default function EditorPage() {
   const [pageSettings, setPageSettings] = useState<PageSettings>(DEFAULT_PAGE_SETTINGS);
   const pageSettingsRef = useRef<PageSettings>(DEFAULT_PAGE_SETTINGS);
   const [pageCount, setPageCount] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [wordCount, setWordCount] = useState(0);
+  const breaksRef = useRef<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const isComposingRef = useRef(false);
@@ -188,6 +191,8 @@ export default function EditorPage() {
       }
       used += heights[i];
     }
+    // Mirror the computed breaks for caret→page mapping (ref: no re-render).
+    breaksRef.current = Array.from(desiredBreaks).sort((a, b) => a - b);
 
     // Current leading breaks expressed as content indices.
     const currentBreaks = new Set<number>();
@@ -268,14 +273,45 @@ export default function EditorPage() {
     paginateTimer.current = window.setTimeout(() => paginate(), 120);
   }, [paginate]);
 
+  // Map the caret to its page: content index of the top-level node holding
+  // the selection head, then count breaks at or before it.
+  const updateCaretPage = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    try {
+      const { $head } = editor.state.selection;
+      const { doc } = editor.state;
+      const topIdx = Math.min($head.index(0), doc.childCount);
+      let ci = 0;
+      for (let i = 0; i < topIdx; i++) {
+        if (doc.child(i).type.name !== 'pageBreak') ci++;
+      }
+      let pg = 1;
+      for (const b of breaksRef.current) {
+        if (b <= ci) pg++;
+        else break;
+      }
+      setCurrentPage((prev) => (prev === pg ? prev : pg));
+    } catch {
+      /* transient selection state during doc swaps — ignore */
+    }
+  }, []);
+
   const editor = useEditor({
     extensions,
     content: '<p></p>',
     immediatelyRender: false,
-    onUpdate: () => {
+    onUpdate: ({ editor: ed }) => {
       setSaveStatus('dirty');
       scheduleSave();
       schedulePaginate();
+      updateCaretPage();
+      const text = ed.getText().trim();
+      const next = text ? text.split(/\s+/).length : 0;
+      setWordCount((prev) => (prev === next ? prev : next));
+    },
+    onSelectionUpdate: () => {
+      updateCaretPage();
     },
   });
   editorRef.current = editor;
@@ -508,7 +544,8 @@ export default function EditorPage() {
       pageSettings={pageSettings}
       onPageSettingsChange={handlePageSettingsChange}
     >
-      <div className="editor-workspace min-h-full overflow-auto pb-16">
+      <div className="editor-workspace flex h-full min-h-full flex-col overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-auto pb-16">
         <div className="mx-auto flex flex-col items-stretch" style={{ width: `${pageW}mm` }}>
           {/* Document header */}
           <div className="px-6 pt-8 no-print">
@@ -555,7 +592,7 @@ export default function EditorPage() {
                 <div
                   key={i}
                   aria-hidden
-                  className="page-sheet absolute left-0 top-0 bg-[var(--page-bg)] border border-[var(--border)] rounded-[2px] shadow-[var(--shadow-lg)] pointer-events-none"
+                  className={`page-sheet absolute left-0 top-0 pointer-events-none${i === Math.min(currentPage, pageCount) - 1 ? ' page-sheet-active' : ''}`}
                   style={{
                     top: `${i * unitMm}mm`,
                     height: `${pageH}mm`,
@@ -582,6 +619,14 @@ export default function EditorPage() {
               </div>
             </div>
           )}
+        </div>
+        </div>
+
+        {/* Word-like status bar — pinned, always visible */}
+        <div className="editor-statusbar no-print z-40 flex shrink-0 items-center gap-4 px-5">
+          <span>Page {Math.min(currentPage, pageCount)} of {pageCount}</span>
+          <span>{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
+          <span className="ml-auto">Print Layout</span>
         </div>
       </div>
     </AppLayout>
