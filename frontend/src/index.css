@@ -339,4 +339,14 @@
     break-after: page;
     height: 0 !important;
   }
+  /* Zoom must never affect print output */
+  .zoom-outer {
+    width: auto !important;
+    height: auto !important;
+  }
+  .zoom-inner {
+    transform: none !important;
+    width: 100% !important;
+    height: auto !important;
+  }
 }

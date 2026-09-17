@@ -18,6 +18,8 @@ interface AppLayoutProps {
   importing?: boolean;
   pageSettings?: PageSettings;
   onPageSettingsChange?: (next: PageSettings) => void;
+  zoom?: number;
+  onZoomChange?: (next: number) => void;
 }
 
 export default function AppLayout({
@@ -32,6 +34,8 @@ export default function AppLayout({
   importing,
   pageSettings,
   onPageSettingsChange,
+  zoom,
+  onZoomChange,
 }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -53,6 +57,8 @@ export default function AppLayout({
         importing={importing}
         pageSettings={pageSettings}
         onPageSettingsChange={onPageSettingsChange}
+        zoom={zoom}
+        onZoomChange={onZoomChange}
       />
 
       <div className="flex-1 flex min-h-0">

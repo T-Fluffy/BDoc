@@ -24,6 +24,8 @@ import {
   DEFAULT_PAGE_SETTINGS,
   PAGE_DIMENSIONS_MM,
   MARGIN_MM,
+  ZOOM_PRESETS,
+  ZOOM_STORAGE_KEY,
   parsePageSettings,
   type PageSettings,
 } from '../../domain/models/PageSettings';
@@ -140,6 +142,12 @@ export default function EditorPage() {
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [wordCount, setWordCount] = useState(0);
+  const [zoom, setZoom] = useState<number>(() => {
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem(ZOOM_STORAGE_KEY) : null;
+    const v = raw ? parseFloat(raw) : 1;
+    return ZOOM_PRESETS.includes(v) ? v : 1;
+  });
+  const zoomRef = useRef<number>(1);
   const breaksRef = useRef<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
@@ -178,7 +186,10 @@ export default function EditorPage() {
       if (el) {
         const r = el.getBoundingClientRect();
         const cs = getComputedStyle(el);
-        h = r.height + parseFloat(cs.marginTop || '0') + parseFloat(cs.marginBottom || '0');
+        // getBoundingClientRect is in scaled (visual) px — convert back to
+        // unscaled layout px so breaks stay correct at any zoom level.
+        const z = zoomRef.current || 1;
+        h = r.height / z + parseFloat(cs.marginTop || '0') + parseFloat(cs.marginBottom || '0');
       }
       heights.push(h);
     }
@@ -272,6 +283,24 @@ export default function EditorPage() {
     if (paginateTimer.current) window.clearTimeout(paginateTimer.current);
     paginateTimer.current = window.setTimeout(() => paginate(), 120);
   }, [paginate]);
+
+  // Keep the zoom ref in sync and persist the preference; re-measure after
+  // the scaled layout has painted.
+  useEffect(() => {
+    zoomRef.current = zoom;
+    try {
+      window.localStorage.setItem(ZOOM_STORAGE_KEY, String(zoom));
+    } catch {
+      /* storage unavailable — zoom still works for the session */
+    }
+  }, [zoom]);
+
+  const handleZoomChange = useCallback((next: number) => {
+    if (!ZOOM_PRESETS.includes(next)) return;
+    setZoom(next);
+    window.setTimeout(schedulePaginate, 150);
+    window.setTimeout(schedulePaginate, 450);
+  }, [schedulePaginate]);
 
   // Map the caret to its page: content index of the top-level node holding
   // the selection head, then count breaks at or before it.
@@ -543,6 +572,8 @@ export default function EditorPage() {
       importing={importing}
       pageSettings={pageSettings}
       onPageSettingsChange={handlePageSettingsChange}
+      zoom={zoom}
+      onZoomChange={handleZoomChange}
     >
       <div className="editor-workspace flex h-full min-h-full flex-col overflow-hidden">
         <div className="min-h-0 flex-1 overflow-auto pb-16">
@@ -574,20 +605,22 @@ export default function EditorPage() {
           <div className="sticky top-0 z-50 px-4 pt-2 pb-4 bg-gradient-to-b from-workspace via-workspace/95 to-transparent no-print">
             <Toolbar editor={editor} />
           </div>
+        </div>
 
-          {/* Paginated document */}
+          {/* Paginated document — zoom scales the sheet stack only */}
           {loading ? (
-            <div className="px-6 py-20 flex justify-center text-ink-muted">
+            <div className="mx-auto px-6 py-20 flex justify-center text-ink-muted" style={{ width: `${pageW}mm` }}>
               <span className="flex items-center gap-2">
                 <FaSpinner className="animate-spin" /> Loading document…
               </span>
             </div>
           ) : loadError ? (
-            <div className="px-6 py-20 text-center text-danger">
+            <div className="mx-auto px-6 py-20 text-center text-danger" style={{ width: `${pageW}mm` }}>
               {loadError}
             </div>
           ) : (
-            <div className="relative w-full" style={{ height: `${stackHeightMm}mm` }}>
+            <div className="zoom-outer" style={{ width: `${pageW * zoom}mm`, height: `${stackHeightMm * zoom}mm`, margin: '0 auto' }}>
+            <div className="zoom-inner relative" style={{ width: `${pageW}mm`, height: `${stackHeightMm}mm`, transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
               {Array.from({ length: pageCount }).map((_, i) => (
                 <div
                   key={i}
@@ -618,15 +651,15 @@ export default function EditorPage() {
                 <EditorContent editor={editor} />
               </div>
             </div>
+            </div>
           )}
-        </div>
         </div>
 
         {/* Word-like status bar — pinned, always visible */}
         <div className="editor-statusbar no-print z-40 flex shrink-0 items-center gap-4 px-5">
           <span>Page {Math.min(currentPage, pageCount)} of {pageCount}</span>
           <span>{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
-          <span className="ml-auto">Print Layout</span>
+          <span className="ml-auto">Print Layout · {Math.round(zoom * 100)}%</span>
         </div>
       </div>
     </AppLayout>

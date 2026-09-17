@@ -39,6 +39,10 @@ export const MARGIN_MM: Record<MarginPreset, number> = {
   wide: 30,
 };
 
+/** Zoom presets (fraction of 100%) + persistence key. */
+export const ZOOM_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+export const ZOOM_STORAGE_KEY = 'bdoc-zoom';
+
 export function resolvePageStyle(s: PageSettings): CSSProperties {
   const dim = PAGE_DIMENSIONS_MM[s.size];
   const w = s.orientation === 'landscape' ? dim.h : dim.w;

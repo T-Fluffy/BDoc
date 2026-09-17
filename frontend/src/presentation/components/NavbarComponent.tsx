@@ -23,6 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   PAGE_SIZES,
   MARGIN_PRESETS,
+  ZOOM_PRESETS,
   type PageSettings,
 } from '../../domain/models/PageSettings';
 
@@ -39,6 +40,8 @@ interface NavbarProps {
   importing?: boolean;
   pageSettings?: PageSettings;
   onPageSettingsChange?: (next: PageSettings) => void;
+  zoom?: number;
+  onZoomChange?: (next: number) => void;
 }
 
 export default function NavbarComponent({
@@ -54,12 +57,14 @@ export default function NavbarComponent({
   importing,
   pageSettings,
   onPageSettingsChange,
+  zoom,
+  onZoomChange,
 }: NavbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { mode, setMode } = useTheme();
   const { logout } = useAuth();
-  const [menu, setMenu] = useState<'insert' | 'file' | 'page' | 'user' | null>(null);
+  const [menu, setMenu] = useState<'insert' | 'file' | 'page' | 'user' | 'zoom' | null>(null);
 
   const updatePage = (patch: Partial<PageSettings>) => {
     if (pageSettings && onPageSettingsChange) {
@@ -232,6 +237,45 @@ export default function NavbarComponent({
                       ))}
                     </select>
                   </label>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {isEditing && zoom !== undefined && onZoomChange && (
+          <div className="relative">
+            <button
+              onClick={() => setMenu(menu === 'zoom' ? null : 'zoom')}
+              className={`ml-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all border ${
+                menu === 'zoom'
+                  ? 'bg-accent-soft text-accent border-[var(--border-strong)]'
+                  : 'bg-soft/60 text-ink-muted hover:text-ink border-[var(--border)]'
+              }`}
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+
+            {menu === 'zoom' && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
+                <div className="absolute left-0 mt-2 w-40 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150 z-50">
+                  <div className="p-1.5">
+                    {ZOOM_PRESETS.map((z) => (
+                      <button
+                        key={z}
+                        onClick={() => { onZoomChange(z); closeMenu(); }}
+                        className={`w-full flex items-center justify-between p-2.5 rounded-lg text-sm transition-colors ${
+                          z === zoom
+                            ? 'text-accent bg-accent-soft'
+                            : 'text-ink-muted hover:text-ink hover:bg-soft'
+                        }`}
+                      >
+                        {Math.round(z * 100)}%
+                        {z === zoom && <span aria-hidden>✓</span>}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </>
             )}
