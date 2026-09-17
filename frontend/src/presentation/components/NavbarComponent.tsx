@@ -43,6 +43,8 @@ interface NavbarProps {
   zoom?: number;
   onZoomChange?: (next: number) => void;
   onEditHeaderFooter?: () => void;
+  showRuler?: boolean;
+  onToggleRuler?: () => void;
 }
 
 export default function NavbarComponent({
@@ -61,6 +63,8 @@ export default function NavbarComponent({
   zoom,
   onZoomChange,
   onEditHeaderFooter,
+  showRuler,
+  onToggleRuler,
 }: NavbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -247,6 +251,18 @@ export default function NavbarComponent({
                     >
                       Header &amp; footer…
                     </button>
+                  )}
+
+                  {onToggleRuler && (
+                    <label className="mt-2 flex items-center gap-2 px-2 text-sm text-ink-muted cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showRuler !== false}
+                        onChange={onToggleRuler}
+                        className="accent-[var(--accent)]"
+                      />
+                      Show ruler
+                    </label>
                   )}
                 </div>
               </>

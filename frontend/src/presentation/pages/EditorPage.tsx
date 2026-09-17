@@ -17,6 +17,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { FaSpinner } from 'react-icons/fa';
 import AppLayout from '../layout/AppLayout';
 import { Toolbar } from '../components/Toolbar';
+import Ruler from '../components/Ruler';
 import HeaderFooterDialog from '../components/HeaderFooterDialog';
 import { getDocument, updateDocument } from '../../application/services/documentService';
 import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
@@ -25,10 +26,10 @@ import type { Document } from '../../domain/models/DocumentModel';
 import {
   DEFAULT_PAGE_SETTINGS,
   PAGE_DIMENSIONS_MM,
-  MARGIN_MM,
   ZOOM_PRESETS,
   ZOOM_STORAGE_KEY,
   parsePageSettings,
+  resolveMarginMm,
   resolveHeaderFooter,
   headerFooterTextForPage,
   type PageSettings,
@@ -145,6 +146,10 @@ export default function EditorPage() {
   const [pageSettings, setPageSettings] = useState<PageSettings>(DEFAULT_PAGE_SETTINGS);
   const pageSettingsRef = useRef<PageSettings>(DEFAULT_PAGE_SETTINGS);
   const [hfDialogOpen, setHfDialogOpen] = useState(false);
+  const [showRuler, setShowRuler] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return window.localStorage.getItem('bdoc-ruler') !== 'false';
+  });
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [wordCount, setWordCount] = useState(0);
@@ -157,11 +162,73 @@ export default function EditorPage() {
   const breaksRef = useRef<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
+  const printRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
   const lastPaginateDispatchRef = useRef<number>(0);
 
   // Real pagination: insert/remove invisible page-break spacers so content breaks
   // onto the next sheet (with margins + gap) instead of spilling into the gaps.
+  // Static print snapshot: an inert per-page clone (header + segments + footer)
+  // used ONLY for print, where it paginates natively page by page.
+  const rebuildPrintSnapshot = useCallback(() => {
+    const editor = editorRef.current;
+    const host = printRef.current;
+    if (!editor || !host || typeof window === 'undefined') return;
+    const wdoc = window.document;
+    const hf = resolveHeaderFooter(pageSettingsRef.current);
+    const kids = Array.from((editor.view.dom as HTMLElement).children) as HTMLElement[];
+    const total = kids.filter((k) => k.classList.contains('page-break')).length + 1;
+    host.innerHTML = '';
+    const frag = wdoc.createDocumentFragment();
+    let pg = 1;
+    const appendFooter = (pageDiv: HTMLDivElement, p: number) => {
+      const fText = headerFooterTextForPage(hf, 'footer', p);
+      if (fText) {
+        const f = wdoc.createElement('div');
+        f.className = 'bdoc-print-hf';
+        f.textContent = fText;
+        pageDiv.appendChild(f);
+      }
+      if (hf.pageNumbersEnabled) {
+        const pn = wdoc.createElement('div');
+        pn.className = 'bdoc-print-hf';
+        pn.style.textAlign = hf.pageNumberAlign;
+        pn.textContent = `Page ${p} of ${total}`;
+        pageDiv.appendChild(pn);
+      }
+    };
+    let pageDiv = wdoc.createElement('div');
+    pageDiv.className = 'bdoc-print-page';
+    const hFirst = headerFooterTextForPage(hf, 'header', pg);
+    if (hFirst) {
+      const h = wdoc.createElement('div');
+      h.className = 'bdoc-print-hf';
+      h.textContent = hFirst;
+      pageDiv.appendChild(h);
+    }
+    frag.appendChild(pageDiv);
+    for (const k of kids) {
+      if (k.classList.contains('page-break')) {
+        appendFooter(pageDiv, pg);
+        pg++;
+        pageDiv = wdoc.createElement('div');
+        pageDiv.className = 'bdoc-print-page';
+        const hText = headerFooterTextForPage(hf, 'header', pg);
+        if (hText) {
+          const h = wdoc.createElement('div');
+          h.className = 'bdoc-print-hf';
+          h.textContent = hText;
+          pageDiv.appendChild(h);
+        }
+        frag.appendChild(pageDiv);
+      } else {
+        pageDiv.appendChild(k.cloneNode(true));
+      }
+    }
+    appendFooter(pageDiv, pg);
+    host.appendChild(frag);
+  }, []);
+
   const paginate = useCallback(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -170,7 +237,7 @@ export default function EditorPage() {
     const s = pageSettingsRef.current;
     const dims = PAGE_DIMENSIONS_MM[s.size];
     const pageH = s.orientation === 'landscape' ? dims.w : dims.h;
-    const pageM = MARGIN_MM[s.margins];
+    const pageM = resolveMarginMm(s);
     const innerPx = Math.max(1, (pageH - 2 * pageM) * PX_PER_MM);
     const domChildren = Array.from(pm.children) as HTMLElement[];
     const { doc, schema } = editor.state;
@@ -310,6 +377,7 @@ export default function EditorPage() {
         if (str.docChanged) {
           lastPaginateDispatchRef.current = Date.now();
           editor.view.dispatch(str);
+          rebuildPrintSnapshot();
         }
         return;
       }
@@ -361,8 +429,9 @@ export default function EditorPage() {
     if (tr.docChanged) {
       lastPaginateDispatchRef.current = Date.now();
       editor.view.dispatch(tr);
+      rebuildPrintSnapshot();
     }
-  }, [setPageCount]);
+  }, [setPageCount, rebuildPrintSnapshot]);
 
   const paginateTimer = useRef<number | null>(null);
   const schedulePaginate = useCallback(() => {
@@ -446,6 +515,13 @@ export default function EditorPage() {
     };
   }, [editor]);
 
+  // Refresh the static print snapshot before printing.
+  useEffect(() => {
+    const onBeforePrint = () => rebuildPrintSnapshot();
+    window.addEventListener('beforeprint', onBeforePrint);
+    return () => window.removeEventListener('beforeprint', onBeforePrint);
+  }, [rebuildPrintSnapshot]);
+
   const docRef = useRef<Document | null>(null);
   const titleRef = useRef(title);
   const timerRef = useRef<number | null>(null);
@@ -528,6 +604,7 @@ export default function EditorPage() {
         settings: JSON.stringify(pageSettingsRef.current),
       });
       setSaveStatus('saved');
+      rebuildPrintSnapshot();
     } catch {
       setSaveStatus('dirty');
     } finally {
@@ -537,7 +614,7 @@ export default function EditorPage() {
         save();
       }
     }
-  }, [editor]);
+  }, [editor, rebuildPrintSnapshot]);
 
   const scheduleSave = useCallback(() => {
     if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -581,6 +658,50 @@ export default function EditorPage() {
   const handleHeaderFooterChange = (hf: HeaderFooterSettings) => {
     handlePageSettingsChange({ ...pageSettingsRef.current, headerFooter: hf });
   };
+
+  // Ruler drag → uniform custom margin (skip no-ops to avoid render churn).
+  const handleMarginChange = useCallback((mm: number) => {
+    const cur = pageSettingsRef.current;
+    if (cur.margins === 'custom' && cur.customMarginMm === mm) return;
+    if (cur.margins !== 'custom' && resolveMarginMm(cur) === mm) return;
+    handlePageSettingsChange({ ...cur, margins: 'custom', customMarginMm: mm });
+  }, [handlePageSettingsChange]);
+
+  const handleToggleRuler = useCallback(() => {
+    setShowRuler((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem('bdoc-ruler', String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  // Dynamic @page rule so print/PDF matches the on-screen page setup.
+  // A2/A1 have no CSS size keywords — fall back to explicit millimetres.
+  useEffect(() => {
+    const landscape = pageSettings.orientation === 'landscape';
+    const dim = PAGE_DIMENSIONS_MM[pageSettings.size];
+    const w = landscape ? dim.h : dim.w;
+    const h = landscape ? dim.w : dim.h;
+    const size =
+      pageSettings.size === 'A5' || pageSettings.size === 'A4' || pageSettings.size === 'A3'
+        ? `${pageSettings.size} ${landscape ? 'landscape' : 'portrait'}`
+        : `${w}mm ${h}mm`;
+    const css = `@page { size: ${size}; margin: ${resolveMarginMm(pageSettings)}mm; }`;
+    let el = window.document.getElementById('bdoc-print-page');
+    if (!el) {
+      el = window.document.createElement('style');
+      el.id = 'bdoc-print-page';
+      window.document.head.appendChild(el);
+    }
+    el.textContent = css;
+    return () => {
+      window.document.getElementById('bdoc-print-page')?.remove();
+    };
+  }, [pageSettings]);
 
   const handleImport = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -651,7 +772,7 @@ export default function EditorPage() {
   const dims = PAGE_DIMENSIONS_MM[pageSettings.size];
   const pageW = pageSettings.orientation === 'landscape' ? dims.h : dims.w;
   const pageH = pageSettings.orientation === 'landscape' ? dims.w : dims.h;
-  const pageM = MARGIN_MM[pageSettings.margins];
+  const pageM = resolveMarginMm(pageSettings);
   const unitMm = pageH + gapMm;
   const stackHeightMm = Math.max(pageH, pageCount * pageH + Math.max(0, pageCount - 1) * gapMm);
   const spacerPx = (2 * pageM + gapMm) * PX_PER_MM;
@@ -671,9 +792,11 @@ export default function EditorPage() {
       zoom={zoom}
       onZoomChange={handleZoomChange}
       onEditHeaderFooter={() => setHfDialogOpen(true)}
+      showRuler={showRuler}
+      onToggleRuler={handleToggleRuler}
     >
       <div className="editor-workspace flex h-full min-h-full flex-col overflow-hidden">
-        <div className="min-h-0 flex-1 overflow-auto pb-16">
+        <div className="bdoc-scroll min-h-0 flex-1 overflow-auto pb-16">
         <div className="mx-auto flex flex-col items-stretch" style={{ width: `${pageW}mm` }}>
           {/* Document header */}
           <div className="px-6 pt-8 no-print">
@@ -701,6 +824,9 @@ export default function EditorPage() {
           {/* Toolbar */}
           <div className="sticky top-0 z-50 px-4 pt-2 pb-4 bg-gradient-to-b from-workspace via-workspace/95 to-transparent no-print">
             <Toolbar editor={editor} />
+            {showRuler && (
+              <Ruler pageWidthMm={pageW} marginMm={pageM} onMarginChange={handleMarginChange} />
+            )}
           </div>
         </div>
 
@@ -789,6 +915,8 @@ export default function EditorPage() {
                 <EditorContent editor={editor} />
               </div>
             </div>
+            {/* Static print snapshot (hidden on screen, paginates natively in print) */}
+            <div ref={printRef} className="bdoc-print" aria-hidden />
             </div>
           )}
         </div>

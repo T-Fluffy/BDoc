@@ -21,6 +21,8 @@ interface AppLayoutProps {
   zoom?: number;
   onZoomChange?: (next: number) => void;
   onEditHeaderFooter?: () => void;
+  showRuler?: boolean;
+  onToggleRuler?: () => void;
 }
 
 export default function AppLayout({
@@ -38,6 +40,8 @@ export default function AppLayout({
   zoom,
   onZoomChange,
   onEditHeaderFooter,
+  showRuler,
+  onToggleRuler,
 }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -62,12 +66,14 @@ export default function AppLayout({
         zoom={zoom}
         onZoomChange={onZoomChange}
         onEditHeaderFooter={onEditHeaderFooter}
+        showRuler={showRuler}
+        onToggleRuler={onToggleRuler}
       />
 
       <div className="flex-1 flex min-h-0">
         {isEditing && <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
-        <main className="flex-1 relative overflow-y-auto overflow-x-hidden min-w-0">
+        <main className="app-main flex-1 relative overflow-y-auto overflow-x-hidden min-w-0">
           {children}
         </main>
       </div>

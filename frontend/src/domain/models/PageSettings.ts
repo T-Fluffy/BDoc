@@ -2,12 +2,14 @@ import type { CSSProperties } from 'react';
 
 export type PageSize = 'A5' | 'A4' | 'A3' | 'A2' | 'A1';
 export type Orientation = 'portrait' | 'landscape';
-export type MarginPreset = 'narrow' | 'normal' | 'wide';
+export type MarginPreset = 'narrow' | 'normal' | 'wide' | 'custom';
 
 export interface PageSettings {
   size: PageSize;
   orientation: Orientation;
   margins: MarginPreset;
+  /** Exact margin in mm — used when `margins === 'custom'` (e.g. set via the ruler). */
+  customMarginMm?: number;
   headerFooter?: HeaderFooterSettings;
 }
 
@@ -87,7 +89,24 @@ export const MARGIN_PRESETS: { value: MarginPreset; label: string }[] = [
   { value: 'narrow', label: 'Narrow' },
   { value: 'normal', label: 'Normal' },
   { value: 'wide', label: 'Wide' },
+  { value: 'custom', label: 'Custom' },
 ];
+
+/** Maximum margin the ruler / model allows (mm). */
+export const MAX_MARGIN_MM = 50;
+
+export function clampMarginMm(v: number): number {
+  if (!Number.isFinite(v)) return MARGIN_MM.normal;
+  return Math.min(MAX_MARGIN_MM, Math.max(0, v));
+}
+
+/** Resolve the effective margin in mm (custom value wins when selected). */
+export function resolveMarginMm(s: PageSettings): number {
+  if (s.margins === 'custom') {
+    return typeof s.customMarginMm === 'number' ? clampMarginMm(s.customMarginMm) : MARGIN_MM.normal;
+  }
+  return MARGIN_MM[s.margins];
+}
 
 /** Page dimensions in millimetres (ISO 216). */
 export const PAGE_DIMENSIONS_MM: Record<PageSize, { w: number; h: number }> = {
@@ -98,7 +117,7 @@ export const PAGE_DIMENSIONS_MM: Record<PageSize, { w: number; h: number }> = {
   A1: { w: 594, h: 841 },
 };
 
-export const MARGIN_MM: Record<MarginPreset, number> = {
+export const MARGIN_MM: Record<Exclude<MarginPreset, 'custom'>, number> = {
   narrow: 12,
   normal: 20,
   wide: 30,
@@ -112,7 +131,7 @@ export function resolvePageStyle(s: PageSettings): CSSProperties {
   const dim = PAGE_DIMENSIONS_MM[s.size];
   const w = s.orientation === 'landscape' ? dim.h : dim.w;
   const h = s.orientation === 'landscape' ? dim.w : dim.h;
-  const m = MARGIN_MM[s.margins];
+  const m = resolveMarginMm(s);
   return {
     width: `${w}mm`,
     minHeight: `${h}mm`,
@@ -132,6 +151,13 @@ export function parsePageSettings(raw: string | null | undefined): PageSettings 
       margins: (MARGIN_PRESETS.map((m) => m.value) as string[]).includes(parsed.margins ?? '')
         ? (parsed.margins as MarginPreset)
         : DEFAULT_PAGE_SETTINGS.margins,
+      customMarginMm:
+        typeof parsed.customMarginMm === 'number' &&
+        Number.isFinite(parsed.customMarginMm) &&
+        parsed.customMarginMm >= 0 &&
+        parsed.customMarginMm <= MAX_MARGIN_MM
+          ? parsed.customMarginMm
+          : undefined,
     };
     base.headerFooter = resolveHeaderFooter({ ...base, headerFooter: parsed.headerFooter });
     return base;

@@ -202,6 +202,78 @@
   opacity: 1;
 }
 
+/* Word-like horizontal ruler: white strip, margin shading, cm ticks,
+   draggable accent margin handles. Percentage-positioned so it stays
+   truthful at any zoom level. */
+.bdoc-ruler {
+  --ruler-tick: rgba(71, 85, 105, 0.55);
+  position: relative;
+  height: 30px;
+  margin-top: 8px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.bdoc-ruler-shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(100, 116, 139, 0.28);
+  pointer-events: none;
+}
+.bdoc-ruler-ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.bdoc-ruler-label {
+  position: absolute;
+  top: 1px;
+  transform: translateX(-50%);
+  font-size: 9px;
+  line-height: 1;
+  color: #64748b;
+  pointer-events: none;
+}
+.bdoc-ruler-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  transform: translateX(-50%);
+  cursor: ew-resize;
+  z-index: 2;
+}
+.bdoc-ruler-handle::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--accent);
+  opacity: 0.8;
+}
+.bdoc-ruler-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top: 8px solid var(--accent);
+}
+
+/* Static print snapshot host — hidden on screen, built from live content. */
+.bdoc-print {
+  display: none;
+}
+
 /* Word-like sheet stack: white pages with layered shadows on the canvas */
 .page-sheet {
   background: var(--page-bg);
@@ -356,6 +428,25 @@
   .no-print {
     display: none !important;
   }
+  /* Flatten the app flex/scroll layout — Chrome cannot fragment flex items
+     across printed pages (everything would collapse onto a single page). */
+  #root > div {
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .app-main {
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .editor-workspace {
+    display: block !important;
+    height: auto !important;
+  }
+  .bdoc-scroll {
+    overflow: visible !important;
+    height: auto !important;
+  }
   .editor-workspace {
     background: #fff;
     padding: 0;
@@ -365,13 +456,29 @@
     display: none !important;
   }
   .bdoc-page {
-    position: static !important;
-    height: auto !important;
+    display: none !important;
+  }
+  /* Screen-only interactive header/footer zones — print uses the snapshot. */
+  .page-header-zone,
+  .page-footer-zone {
+    display: none !important;
+  }
+  /* Static print snapshot (built from the live document) paginates here. */
+  .bdoc-print {
+    display: block !important;
     width: 100% !important;
-    box-shadow: none;
-    margin: 0;
-    padding: 0 !important;
-    min-height: 0;
+  }
+  .bdoc-print-page {
+    break-after: page;
+  }
+  .bdoc-print-page:last-child {
+    break-after: auto;
+  }
+  .bdoc-print-hf {
+    font-size: 9pt;
+    line-height: 1.4;
+    color: #0f172a;
+    opacity: 0.7;
   }
   .bdoc-page .ProseMirror {
     min-height: 0;
@@ -380,7 +487,6 @@
     break-after: page;
     height: 0 !important;
   }
-  /* Zoom must never affect print output */
   .zoom-outer {
     width: auto !important;
     height: auto !important;

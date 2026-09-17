@@ -12,6 +12,8 @@ public class PageSettings
     public string Size { get; set; } = "A4";
     public string Orientation { get; set; } = "portrait";
     public string Margins { get; set; } = "normal";
+    /// <summary>Exact margin in mm (e.g. set via the ruler); &lt;= 0 = use the preset.</summary>
+    public double CustomMarginMm { get; set; }
     public HeaderFooterSettings? HeaderFooter { get; set; }
 }
 
@@ -101,7 +103,9 @@ public static class DocxService
         pageSz.Height = new UInt32Value((uint)Math.Round(h * 1440 / 25.4));
         pageSz.Orient = landscape ? PageOrientationValues.Landscape : PageOrientationValues.Portrait;
 
-        var marginMm = MarginMm.TryGetValue(cfg.Margins, out var m) ? m : MarginMm["normal"];
+        var marginMm = cfg.CustomMarginMm > 0
+            ? Math.Clamp(cfg.CustomMarginMm, 0, 50)
+            : MarginMm.TryGetValue(cfg.Margins, out var m) ? m : MarginMm["normal"];
         var marginTwips = (uint)Math.Round(marginMm * 1440 / 25.4);
         var pgMar = sectPr.GetFirstChild<PageMargin>() ?? sectPr.AppendChild(new PageMargin());
         pgMar.Top = new Int32Value((int)marginTwips);
