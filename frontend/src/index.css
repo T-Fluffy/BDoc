@@ -153,12 +153,32 @@
   outline: none;
   min-height: 0;
   color: var(--page-text);
+  orphans: 2;
+  widows: 2;
 }
 
 /* Invisible page-boundary spacer (height driven by --page-gap to match sheets) */
 .page-break {
   display: block;
   height: var(--page-gap, 0);
+}
+
+/* Word-like break hygiene: keep headings with the following content and never
+   split table rows (matters for print, where the browser paginates natively). */
+.bdoc-page .ProseMirror h1,
+.bdoc-page .ProseMirror h2,
+.bdoc-page .ProseMirror h3,
+.bdoc-page .ProseMirror h4,
+.bdoc-page .ProseMirror h5,
+.bdoc-page .ProseMirror h6 {
+  break-after: avoid;
+}
+.bdoc-page .ProseMirror table {
+  break-inside: auto;
+}
+.bdoc-page .ProseMirror tr,
+.bdoc-page .ProseMirror thead {
+  break-inside: avoid;
 }
 
 /* Word-like sheet stack: white pages with layered shadows on the canvas */

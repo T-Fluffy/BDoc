@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Node, Editor } from '@tiptap/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Paragraph from '@tiptap/extension-paragraph';
@@ -178,6 +179,7 @@ export default function EditorPage() {
     // breaks currently are), so it is idempotent: re-running after breaks are
     // inserted yields the same result — no oscillation / runaway page creation.
     const heights: number[] = [];
+    const kinds: string[] = [];
     for (let i = 0; i < doc.childCount; i++) {
       const node = doc.child(i);
       if (node.type.name === 'pageBreak') continue; // spacer, not content
@@ -192,13 +194,30 @@ export default function EditorPage() {
         h = r.height / z + parseFloat(cs.marginTop || '0') + parseFloat(cs.marginBottom || '0');
       }
       heights.push(h);
+      kinds.push(node.type.name);
     }
     const desiredBreaks = new Set<number>();
     let used = 0;
+    let pageStart = 0;
     for (let i = 0; i < heights.length; i++) {
       if (i > 0 && used + heights[i] > innerPx) {
-        desiredBreaks.add(i);
-        used = 0;
+        let b = i;
+        // Keep-with-next: never strand a heading (or a run of headings) alone
+        // at the bottom of a page — pull it onto the next page. But never
+        // empty the current page: if it holds only headings, carry them over.
+        if (kinds[i - 1] === 'heading') {
+          b = i - 1;
+          while (b > pageStart && kinds[b - 1] === 'heading') b--;
+          if (b === pageStart) b = -1;
+        }
+        if (b > 0) {
+          desiredBreaks.add(b);
+          let nu = 0;
+          for (let k = b; k < i; k++) nu += heights[k];
+          used = nu;
+          pageStart = b;
+        }
+        // b <= 0: carry the content over (overflow) rather than emit a bad break.
       }
       used += heights[i];
     }
@@ -216,10 +235,10 @@ export default function EditorPage() {
       }
       cj++;
     }
-    // Idempotent check: if the desired breaks are the same as the current ones,
-    // there is nothing to do — skip dispatch and setPageCount to avoid a loop.
+    // Idempotent check: if the desired breaks are the same as the current ones
+    // (and no table needs splitting below), there is nothing to do — skip
+    // dispatch and setPageCount to avoid a loop.
     const same = currentBreaks.size === desiredBreaks.size && [...currentBreaks].every((c) => desiredBreaks.has(c));
-    if (same) return;
 
     // Guard: skip pagination dispatch if user is composing (IME) or if we dispatched
     // too recently (prevents rapid re-dispatch loops that can interfere with typing).
@@ -229,6 +248,68 @@ export default function EditorPage() {
       window.setTimeout(() => paginate(), 500);
       return;
     }
+
+    // Pre-pass: split tables taller than a full page at a row boundary so the
+    // pieces can paginate normally. All splits go in one transaction (highest
+    // position first), then return — the resulting update re-triggers paginate
+    // for the regular break pass. Each split strictly shrinks the tallest
+    // piece, so this terminates; pieces that fit are never re-split.
+    {
+      const splits: { pos: number; end: number; nodes: PMNode[] }[] = [];
+      let spos = 0;
+      let sci = 0;
+      for (let i = 0; i < doc.childCount; i++) {
+        const node = doc.child(i);
+        const start = spos;
+        spos += node.nodeSize;
+        if (node.type.name === 'pageBreak') continue;
+        const ci = sci++;
+        if (node.type.name !== 'table' || heights[ci] <= innerPx || node.childCount < 2) continue;
+        const el = domChildren[i];
+        if (!el) continue;
+        // TipTap wraps tables in a div.tableWrapper — descend to the <table>.
+        const tableEl = el.tagName === 'TABLE' ? el : el.querySelector('table');
+        if (!tableEl) continue;
+        const rowEls = tableEl.querySelectorAll(':scope > tr, :scope > tbody > tr, :scope > thead > tr');
+        if (rowEls.length !== node.childCount) continue; // unexpected DOM (nested tables?) — stay safe
+        const rowHs: number[] = [];
+        let rowSum = 0;
+        rowEls.forEach((re) => {
+          const rh = (re as HTMLElement).getBoundingClientRect().height / (zoomRef.current || 1);
+          rowHs.push(rh);
+          rowSum += rh;
+        });
+        const chrome = Math.max(0, heights[ci] - rowSum); // borders/padding around rows
+        let cut = -1;
+        let acc = 0;
+        for (let r = 0; r < rowHs.length - 1; r++) {
+          acc += rowHs[r];
+          if (acc + chrome <= innerPx) cut = r;
+          else break;
+        }
+        if (cut < 0) continue; // even the first row overflows — cannot split meaningfully
+        const rows1: PMNode[] = [];
+        const rows2: PMNode[] = [];
+        for (let r = 0; r < node.childCount; r++) {
+          (r <= cut ? rows1 : rows2).push(node.child(r));
+        }
+        const t1 = schema.nodes.table.create(node.attrs, rows1);
+        const t2 = schema.nodes.table.create(node.attrs, rows2);
+        splits.push({ pos: start, end: start + node.nodeSize, nodes: [t1, schema.nodes.pageBreak.create(), t2] });
+      }
+      if (splits.length > 0) {
+        let str = editor.state.tr;
+        for (const s of splits.sort((a, b) => b.pos - a.pos)) {
+          str = str.replaceWith(s.pos, s.end, s.nodes);
+        }
+        if (str.docChanged) {
+          lastPaginateDispatchRef.current = Date.now();
+          editor.view.dispatch(str);
+        }
+        return;
+      }
+    }
+    if (same) return;
 
     // The number of pages is exactly (breaks + 1); drive the sheet stack from this
     // instead of a scrollHeight measurement (which was off by one).
