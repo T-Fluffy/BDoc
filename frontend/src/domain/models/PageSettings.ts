@@ -8,6 +8,71 @@ export interface PageSettings {
   size: PageSize;
   orientation: Orientation;
   margins: MarginPreset;
+  headerFooter?: HeaderFooterSettings;
+}
+
+export type PageNumberAlign = 'left' | 'center' | 'right';
+
+export interface HeaderFooterContent {
+  default: string;
+  first: string;
+  even: string;
+}
+
+export interface HeaderFooterSettings {
+  header: HeaderFooterContent;
+  footer: HeaderFooterContent;
+  differentFirstPage: boolean;
+  differentOddEven: boolean;
+  pageNumbersEnabled: boolean;
+  pageNumberAlign: PageNumberAlign;
+}
+
+const EMPTY_HF_CONTENT: HeaderFooterContent = { default: '', first: '', even: '' };
+
+export const DEFAULT_HEADER_FOOTER: HeaderFooterSettings = {
+  header: { ...EMPTY_HF_CONTENT },
+  footer: { ...EMPTY_HF_CONTENT },
+  differentFirstPage: false,
+  differentOddEven: false,
+  pageNumbersEnabled: false,
+  pageNumberAlign: 'center',
+};
+
+/** Resolve effective header/footer settings with safe defaults (deep-copied). */
+export function resolveHeaderFooter(s: PageSettings): HeaderFooterSettings {
+  const hf = s.headerFooter;
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  const content = (c: Partial<HeaderFooterContent> | undefined): HeaderFooterContent => ({
+    default: str(c?.default),
+    first: str(c?.first),
+    even: str(c?.even),
+  });
+  const align: PageNumberAlign =
+    hf?.pageNumberAlign === 'left' || hf?.pageNumberAlign === 'right' ? hf.pageNumberAlign : 'center';
+  return {
+    header: content(hf?.header),
+    footer: content(hf?.footer),
+    differentFirstPage: hf?.differentFirstPage === true,
+    differentOddEven: hf?.differentOddEven === true,
+    pageNumbersEnabled: hf?.pageNumbersEnabled === true,
+    pageNumberAlign: align,
+  };
+}
+
+/**
+ * Pick the header/footer text for a 1-based page number. Variant strings fall
+ * back to the default text when empty (friendlier than a blank page zone).
+ */
+export function headerFooterTextForPage(
+  hf: HeaderFooterSettings,
+  kind: 'header' | 'footer',
+  page: number,
+): string {
+  const c = hf[kind];
+  if (page === 1 && hf.differentFirstPage && c.first) return c.first;
+  if (page % 2 === 0 && hf.differentOddEven && c.even) return c.even;
+  return c.default;
 }
 
 export const DEFAULT_PAGE_SETTINGS: PageSettings = {
@@ -59,7 +124,7 @@ export function parsePageSettings(raw: string | null | undefined): PageSettings 
   if (!raw) return { ...DEFAULT_PAGE_SETTINGS };
   try {
     const parsed = JSON.parse(raw) as Partial<PageSettings>;
-    return {
+    const base: PageSettings = {
       size: (PAGE_SIZES as string[]).includes(parsed.size ?? '')
         ? (parsed.size as PageSize)
         : DEFAULT_PAGE_SETTINGS.size,
@@ -68,6 +133,8 @@ export function parsePageSettings(raw: string | null | undefined): PageSettings 
         ? (parsed.margins as MarginPreset)
         : DEFAULT_PAGE_SETTINGS.margins,
     };
+    base.headerFooter = resolveHeaderFooter({ ...base, headerFooter: parsed.headerFooter });
+    return base;
   } catch {
     return { ...DEFAULT_PAGE_SETTINGS };
   }

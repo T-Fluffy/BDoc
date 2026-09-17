@@ -181,6 +181,27 @@
   break-inside: avoid;
 }
 
+/* Header/footer page zones: thin strips in the sheet padding areas.
+   position/z-index beat the transparent editor overlay so zones are clickable. */
+.page-header-zone,
+.page-footer-zone {
+  position: absolute;
+  z-index: 1;
+  cursor: pointer;
+  color: var(--page-text);
+  opacity: 0.62;
+  font-size: 9pt;
+  line-height: 1.4;
+  overflow: hidden;
+  border-radius: 2px;
+}
+.page-header-zone:hover,
+.page-footer-zone:hover {
+  outline: 1px dashed var(--accent);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
 /* Word-like sheet stack: white pages with layered shadows on the canvas */
 .page-sheet {
   background: var(--page-bg);

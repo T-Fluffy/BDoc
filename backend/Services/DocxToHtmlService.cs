@@ -13,15 +13,26 @@ namespace BDoc.Services;
 /// </summary>
 public static class DocxToHtmlService
 {
-    public static string Convert(byte[] docxBytes)
+    public static string Convert(byte[] docxBytes) => ConvertWithSettings(docxBytes).Html;
+
+    public sealed record DocumentImport(string Html, string? SettingsJson);
+
+    public static DocumentImport ConvertWithSettings(byte[] docxBytes)
     {
         using var ms = new MemoryStream(docxBytes);
         using var doc = WordprocessingDocument.Open(ms, false);
         var mainPart = doc.MainDocumentPart;
         var body = mainPart?.Document?.Body;
-        if (body == null) return "<p></p>";
+        if (body == null || mainPart == null) return new DocumentImport("<p></p>", null);
 
-        var numbering = ReadNumbering(mainPart!);
+        var html = ConvertBody(mainPart, body);
+        var settings = ReadSettings(mainPart, body);
+        return new DocumentImport(html, settings);
+    }
+
+    private static string ConvertBody(MainDocumentPart mainPart, Body body)
+    {
+        var numbering = ReadNumbering(mainPart);
         var sb = new StringBuilder();
         var listStack = new List<OpenList>();
 
@@ -449,5 +460,167 @@ public static class DocxToHtmlService
             if (match.Format is not null) return match.Format;
         }
         return "decimal";
+    }
+
+    // ---------- Page setup + header/footer import ----------
+
+    private static readonly (string Name, double W, double H)[] KnownSizes =
+    [
+        ("A5", 148, 210),
+        ("A4", 210, 297),
+        ("A3", 297, 420),
+        ("A2", 420, 594),
+        ("A1", 594, 841),
+    ];
+
+    private static readonly (string Name, double Mm)[] KnownMargins =
+    [
+        ("narrow", 12),
+        ("normal", 20),
+        ("wide", 30),
+    ];
+
+    private sealed class ImportedHf
+    {
+        public string Default = "";
+        public string First = "";
+        public string Even = "";
+    }
+
+    /// <summary>
+    /// Reads page setup + headers/footers from the last section and returns a
+    /// frontend-compatible PageSettings JSON string (camelCase).
+    /// </summary>
+    private static string? ReadSettings(MainDocumentPart mainPart, Body body)
+    {
+        var sectPr = body.Elements<SectionProperties>().LastOrDefault();
+
+        var size = "A4";
+        var orientation = "portrait";
+        var margins = "normal";
+
+        var pgSz = sectPr?.GetFirstChild<PageSize>();
+        if (pgSz?.Width is not null && pgSz?.Height is not null)
+        {
+            double wMm = pgSz.Width!.Value * 25.4 / 1440;
+            double hMm = pgSz.Height!.Value * 25.4 / 1440;
+            bool landscape = pgSz.Orient?.Value == PageOrientationValues.Landscape
+                || (pgSz.Orient?.Value != PageOrientationValues.Portrait && wMm > hMm);
+            orientation = landscape ? "landscape" : "portrait";
+            double nw = Math.Min(wMm, hMm);
+            double nh = Math.Max(wMm, hMm);
+            size = KnownSizes
+                .OrderBy(s => Math.Abs(s.W - nw) + Math.Abs(s.H - nh))
+                .First().Name;
+        }
+
+        var pgMar = sectPr?.GetFirstChild<PageMargin>();
+        if (pgMar?.Top is not null)
+        {
+            double topMm = pgMar.Top!.Value * 25.4 / 1440;
+            margins = KnownMargins.OrderBy(m => Math.Abs(m.Mm - topMm)).First().Name;
+        }
+
+        bool differentFirst = sectPr?.Elements().Any(e => e.LocalName == "titlePg") == true;
+        bool differentOddEven = sectPr?.Elements().Any(e => e.LocalName == "evenAndOddHeaders") == true;
+
+        var header = new ImportedHf();
+        var footer = new ImportedHf();
+        bool pageNumbers = false;
+        string pageAlign = "center";
+
+        if (sectPr is not null)
+        {
+            foreach (var href in sectPr.Elements<HeaderReference>())
+            {
+                if (href.Id?.Value is not { } rid) continue;
+                if (mainPart.GetPartById(rid) is not HeaderPart hp || hp.Header is null) continue;
+                var (text, hasPn, align) = ReadHfParagraphs(hp.Header.Elements<Paragraph>());
+                if (hasPn && !pageNumbers)
+                {
+                    pageNumbers = true;
+                    if (align is not null) pageAlign = align;
+                }
+                SetVariant(header, href.Type?.InnerText, text);
+            }
+            foreach (var fref in sectPr.Elements<FooterReference>())
+            {
+                if (fref.Id?.Value is not { } rid) continue;
+                if (mainPart.GetPartById(rid) is not FooterPart fp || fp.Footer is null) continue;
+                var (text, hasPn, align) = ReadHfParagraphs(fp.Footer.Elements<Paragraph>());
+                if (hasPn)
+                {
+                    pageNumbers = true;
+                    if (align is not null) pageAlign = align;
+                }
+                SetVariant(footer, fref.Type?.InnerText, text);
+            }
+        }
+
+        var settings = new
+        {
+            size,
+            orientation,
+            margins,
+            headerFooter = new
+            {
+                header = new { @default = header.Default, first = header.First, even = header.Even },
+                footer = new { @default = footer.Default, first = footer.First, even = footer.Even },
+                differentFirstPage = differentFirst,
+                differentOddEven,
+                pageNumbersEnabled = pageNumbers,
+                pageNumberAlign = pageAlign,
+            },
+        };
+        return System.Text.Json.JsonSerializer.Serialize(settings);
+    }
+
+    private static void SetVariant(ImportedHf target, string? typeText, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        switch (typeText)
+        {
+            case "first":
+                target.First = text;
+                break;
+            case "even":
+                target.Even = text;
+                break;
+            default:
+                target.Default = text;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Reads header/footer paragraphs. Paragraphs containing a PAGE field are
+    /// treated as the page-number paragraph (alignment captured, literal text
+    /// dropped); all other paragraphs contribute their literal text.
+    /// </summary>
+    private static (string Text, bool HasPageField, string? Align) ReadHfParagraphs(IEnumerable<Paragraph> paras)
+    {
+        var lines = new List<string>();
+        bool hasPn = false;
+        string? align = null;
+        foreach (var p in paras)
+        {
+            bool isPn = p.Descendants<SimpleField>().Any(f => (f.Instruction?.Value ?? "").Contains("PAGE"))
+                || p.Descendants().Any(e => e.LocalName == "instrText" && e.InnerText.Contains("PAGE"));
+            if (isPn)
+            {
+                hasPn = true;
+                var j = p.ParagraphProperties?.Justification?.Val?.InnerText;
+                align = j switch
+                {
+                    "left" => "left",
+                    "right" => "right",
+                    _ => "center",
+                };
+                continue;
+            }
+            var text = string.Concat(p.Descendants<Text>().Select(t => t.Text ?? ""));
+            if (!string.IsNullOrWhiteSpace(text)) lines.Add(text);
+        }
+        return (string.Join("\n", lines), hasPn, align);
     }
 }

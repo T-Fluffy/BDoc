@@ -20,6 +20,7 @@ interface AppLayoutProps {
   onPageSettingsChange?: (next: PageSettings) => void;
   zoom?: number;
   onZoomChange?: (next: number) => void;
+  onEditHeaderFooter?: () => void;
 }
 
 export default function AppLayout({
@@ -36,6 +37,7 @@ export default function AppLayout({
   onPageSettingsChange,
   zoom,
   onZoomChange,
+  onEditHeaderFooter,
 }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -59,6 +61,7 @@ export default function AppLayout({
         onPageSettingsChange={onPageSettingsChange}
         zoom={zoom}
         onZoomChange={onZoomChange}
+        onEditHeaderFooter={onEditHeaderFooter}
       />
 
       <div className="flex-1 flex min-h-0">

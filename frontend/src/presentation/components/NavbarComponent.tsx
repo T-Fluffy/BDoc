@@ -42,6 +42,7 @@ interface NavbarProps {
   onPageSettingsChange?: (next: PageSettings) => void;
   zoom?: number;
   onZoomChange?: (next: number) => void;
+  onEditHeaderFooter?: () => void;
 }
 
 export default function NavbarComponent({
@@ -59,6 +60,7 @@ export default function NavbarComponent({
   onPageSettingsChange,
   zoom,
   onZoomChange,
+  onEditHeaderFooter,
 }: NavbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -237,6 +239,15 @@ export default function NavbarComponent({
                       ))}
                     </select>
                   </label>
+
+                  {onEditHeaderFooter && (
+                    <button
+                      onClick={() => { onEditHeaderFooter(); closeMenu(); }}
+                      className="mt-3 w-full flex items-center justify-center gap-2 p-2 rounded-lg text-sm text-accent bg-accent-soft hover:brightness-110 transition-all"
+                    >
+                      Header &amp; footer…
+                    </button>
+                  )}
                 </div>
               </>
             )}

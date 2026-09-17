@@ -71,7 +71,7 @@ public class DocumentsController : ControllerBase
         if (file is null || file.Length == 0) return BadRequest("No file uploaded");
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
-        var html = DocxToHtmlService.Convert(ms.ToArray());
-        return Ok(new { html });
+        var result = DocxToHtmlService.ConvertWithSettings(ms.ToArray());
+        return Ok(new { html = result.Html, settings = result.SettingsJson });
     }
 }

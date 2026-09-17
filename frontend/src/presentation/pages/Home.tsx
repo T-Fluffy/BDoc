@@ -52,10 +52,10 @@ export default function Home() {
     if (!file) return;
     setImporting(true);
     try {
-      const html = await importDocumentFromDocx(file);
+      const { html, settings } = await importDocumentFromDocx(file);
       const name = file.name.replace(/\.docx$/i, '') || 'Imported document';
       const doc = await createDocument(name);
-      await updateDocument({ ...doc, content: html || '<p></p>', title: name });
+      await updateDocument({ ...doc, content: html || '<p></p>', title: name, settings: settings ?? doc.settings });
       navigate(`/editor/${doc.id}`);
     } catch {
       window.alert('Could not import this Word document.');

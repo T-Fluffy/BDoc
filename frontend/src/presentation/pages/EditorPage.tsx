@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Node, Editor } from '@tiptap/core';
@@ -17,6 +17,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { FaSpinner } from 'react-icons/fa';
 import AppLayout from '../layout/AppLayout';
 import { Toolbar } from '../components/Toolbar';
+import HeaderFooterDialog from '../components/HeaderFooterDialog';
 import { getDocument, updateDocument } from '../../application/services/documentService';
 import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
 import { useDocuments } from '../../application/usecases/useDocument';
@@ -28,7 +29,10 @@ import {
   ZOOM_PRESETS,
   ZOOM_STORAGE_KEY,
   parsePageSettings,
+  resolveHeaderFooter,
+  headerFooterTextForPage,
   type PageSettings,
+  type HeaderFooterSettings,
 } from '../../domain/models/PageSettings';
 
 const TextStyleExt = TextStyle.extend({
@@ -140,6 +144,7 @@ export default function EditorPage() {
   const [importing, setImporting] = useState(false);
   const [pageSettings, setPageSettings] = useState<PageSettings>(DEFAULT_PAGE_SETTINGS);
   const pageSettingsRef = useRef<PageSettings>(DEFAULT_PAGE_SETTINGS);
+  const [hfDialogOpen, setHfDialogOpen] = useState(false);
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [wordCount, setWordCount] = useState(0);
@@ -573,16 +578,25 @@ export default function EditorPage() {
     window.setTimeout(schedulePaginate, 250);
   };
 
+  const handleHeaderFooterChange = (hf: HeaderFooterSettings) => {
+    handlePageSettingsChange({ ...pageSettingsRef.current, headerFooter: hf });
+  };
+
   const handleImport = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file || !editor) return;
+    if (!file) return;
     setImporting(true);
     try {
-      const html = await importDocumentFromDocx(file);
-      const name = file.name.replace(/\.docx$/i, '');
+      const { html, settings } = await importDocumentFromDocx(file);
+      const name = file.name.replace(/\.docx$/i, '') || 'Imported document';
       const doc = await create(name);
-      await editor.commands.setContent(html || '<p></p>');
+      await updateDocument({
+        ...doc,
+        title: name,
+        content: html || '<p></p>',
+        settings: settings ?? doc.settings,
+      });
       navigate(`/editor/${doc.id}`);
     } catch {
       window.alert('Could not import this Word document.');
@@ -633,6 +647,7 @@ export default function EditorPage() {
     );
 
   const gapMm = GAP_MM;
+  const hf = resolveHeaderFooter(pageSettings);
   const dims = PAGE_DIMENSIONS_MM[pageSettings.size];
   const pageW = pageSettings.orientation === 'landscape' ? dims.h : dims.w;
   const pageH = pageSettings.orientation === 'landscape' ? dims.w : dims.h;
@@ -655,6 +670,7 @@ export default function EditorPage() {
       onPageSettingsChange={handlePageSettingsChange}
       zoom={zoom}
       onZoomChange={handleZoomChange}
+      onEditHeaderFooter={() => setHfDialogOpen(true)}
     >
       <div className="editor-workspace flex h-full min-h-full flex-col overflow-hidden">
         <div className="min-h-0 flex-1 overflow-auto pb-16">
@@ -702,19 +718,60 @@ export default function EditorPage() {
           ) : (
             <div className="zoom-outer" style={{ width: `${pageW * zoom}mm`, height: `${stackHeightMm * zoom}mm`, margin: '0 auto' }}>
             <div className="zoom-inner relative" style={{ width: `${pageW}mm`, height: `${stackHeightMm}mm`, transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
-              {Array.from({ length: pageCount }).map((_, i) => (
-                <div
-                  key={i}
-                  aria-hidden
-                  className={`page-sheet absolute left-0 top-0 pointer-events-none${i === Math.min(currentPage, pageCount) - 1 ? ' page-sheet-active' : ''}`}
-                  style={{
-                    top: `${i * unitMm}mm`,
-                    height: `${pageH}mm`,
-                    width: `${pageW}mm`,
-                    padding: `${pageM}mm`,
-                  }}
-                />
-              ))}
+              {Array.from({ length: pageCount }).map((_, i) => {
+                const pg = i + 1;
+                const hText = headerFooterTextForPage(hf, 'header', pg);
+                const fText = headerFooterTextForPage(hf, 'footer', pg);
+                return (
+                  <Fragment key={i}>
+                    <div
+                      aria-hidden
+                      className={`page-sheet absolute left-0 top-0 pointer-events-none${i === Math.min(currentPage, pageCount) - 1 ? ' page-sheet-active' : ''}`}
+                      style={{
+                        top: `${i * unitMm}mm`,
+                        height: `${pageH}mm`,
+                        width: `${pageW}mm`,
+                        padding: `${pageM}mm`,
+                      }}
+                    />
+                    {hText && (
+                      <div
+                        className="page-header-zone"
+                        data-page={pg}
+                        title="Edit header"
+                        onClick={() => setHfDialogOpen(true)}
+                        style={{
+                          top: `${i * unitMm + pageM * 0.2}mm`,
+                          left: `${pageM}mm`,
+                          width: `${pageW - 2 * pageM}mm`,
+                          height: `${pageM * 0.6}mm`,
+                        }}
+                      >
+                        {hText}
+                      </div>
+                    )}
+                    {(fText || hf.pageNumbersEnabled) && (
+                      <div
+                        className="page-footer-zone"
+                        data-page={pg}
+                        title="Edit footer"
+                        onClick={() => setHfDialogOpen(true)}
+                        style={{
+                          top: `${i * unitMm + pageH - pageM * 0.8}mm`,
+                          left: `${pageM}mm`,
+                          width: `${pageW - 2 * pageM}mm`,
+                          height: `${pageM * 0.6}mm`,
+                        }}
+                      >
+                        {fText && <div>{fText}</div>}
+                        {hf.pageNumbersEnabled && (
+                          <div style={{ textAlign: hf.pageNumberAlign }}>Page {pg} of {pageCount}</div>
+                        )}
+                      </div>
+                    )}
+                  </Fragment>
+                );
+              })}
               <div
                 className="bdoc-page absolute left-0 top-0"
                 style={{
@@ -743,6 +800,13 @@ export default function EditorPage() {
           <span className="ml-auto">Print Layout · {Math.round(zoom * 100)}%</span>
         </div>
       </div>
+      {hfDialogOpen && (
+        <HeaderFooterDialog
+          settings={resolveHeaderFooter(pageSettingsRef.current)}
+          onChange={handleHeaderFooterChange}
+          onClose={() => setHfDialogOpen(false)}
+        />
+      )}
     </AppLayout>
   );
 }

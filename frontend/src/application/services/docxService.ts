@@ -15,9 +15,19 @@ export const exportDocumentToDocx = async (doc: Document): Promise<void> => {
   URL.revokeObjectURL(url);
 };
 
-export const importDocumentFromDocx = async (file: File): Promise<string> => {
+export interface DocxImportResult {
+  html: string;
+  /** PageSettings JSON (page setup + header/footer), if the file carried any. */
+  settings: string | null;
+}
+
+export const importDocumentFromDocx = async (file: File): Promise<DocxImportResult> => {
   const form = new FormData();
   form.append('file', file);
-  const res = await axios.post<{ html: string }>(`${API}/import`, form);
-  return res.data.html;
+  const res = await axios.post<{ html: string; settings?: unknown }>(`${API}/import`, form);
+  const s = res.data.settings;
+  return {
+    html: res.data.html ?? '',
+    settings: typeof s === 'string' ? s : s ? JSON.stringify(s) : null,
+  };
 };
