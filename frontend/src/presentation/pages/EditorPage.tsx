@@ -91,6 +91,27 @@ const blockSpacingAttrs = () => ({
     renderHTML: (attributes: Record<string, string>) =>
       attributes.paddingLeft ? { style: `padding-left: ${attributes.paddingLeft}` } : {},
   },
+  tabStops: {
+    default: null,
+    parseHTML: (element: HTMLElement) => {
+      const raw = element.dataset.tabStops;
+      if (!raw) return null;
+      const nums = [...new Set(
+        raw
+          .split(',')
+          .map((s) => parseFloat(s))
+          .filter((n) => Number.isFinite(n) && n >= 0 && n <= 500),
+      )]
+        .sort((a, b) => a - b)
+        .slice(0, 24);
+      return nums.length > 0 ? nums : null;
+    },
+    renderHTML: (attributes: Record<string, unknown>) => {
+      const ts = attributes.tabStops;
+      if (!Array.isArray(ts) || ts.length === 0) return {};
+      return { 'data-tab-stops': (ts as number[]).join(',') };
+    },
+  },
 });
 
 const ParagraphSpacing = Paragraph.extend({
@@ -158,6 +179,39 @@ function stripPageBreaks(html: string): string {
   div.innerHTML = html;
   div.querySelectorAll('.page-break:not([data-user-break="true"])').forEach((el) => el.remove());
   return div.innerHTML;
+}
+
+let spaceCanvas: HTMLCanvasElement | null = null;
+
+/** Width of a space in the caret's own font (layout px), for Tab advances. */
+function measureSpaceWidth(): number {
+  try {
+    if (!spaceCanvas && typeof document !== 'undefined') spaceCanvas = document.createElement('canvas');
+    const ctx = spaceCanvas?.getContext('2d');
+    // Resolve the caret element via the live DOM selection (view.nodeDOM can
+    // return null for edge positions; the selection anchor is always present
+    // when Tab is pressed in a focused editor).
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    const anchor = sel?.anchorNode;
+    let el: HTMLElement | null = null;
+    if (anchor instanceof HTMLElement) el = anchor;
+    else {
+      const p = (anchor as { parentElement?: unknown } | null)?.parentElement;
+      if (p instanceof HTMLElement) el = p;
+    }
+    // NOTE: getComputedStyle().font (shorthand) serializes to "" in Chrome —
+    // compose from longhands instead.
+    const cs = el ? getComputedStyle(el) : null;
+    const font = cs ? `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}` : '';
+    if (ctx) {
+      if (font) ctx.font = font;
+      const w = ctx.measureText(' ').width;
+      if (w > 0) return w;
+    }
+  } catch {
+    /* fall through to fallback */
+  }
+  return 4;
 }
 
 const extensions = [
@@ -678,6 +732,43 @@ export default function EditorPage() {
     content: '<p></p>',
     immediatelyRender: false,
     editorProps: {
+      // Tab advances the caret to the next tab stop of the current block by
+      // inserting spaces (industry-standard web-editor behavior); exact stop
+      // rendering is honored on Word export. Inside tables, Tab keeps its
+      // native cell navigation.
+      handleKeyDown: (view, event) => {
+        if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
+          return false;
+        }
+        const { $head } = view.state.selection;
+        for (let d = 1; d <= $head.depth; d++) {
+          const t = $head.node(d).type.name;
+          if (t === 'table' || t === 'tableRow' || t === 'tableCell' || t === 'tableHeader') return false;
+        }
+        try {
+          const parent = $head.parent;
+          const raw = parent.attrs.tabStops;
+          const stops: number[] = (
+            Array.isArray(raw) ? raw.filter((n) => typeof n === 'number') : []
+          ).sort((a, b) => a - b);
+          const coords = view.coordsAtPos($head.pos);
+          const pmRect = (view.dom as HTMLElement).getBoundingClientRect();
+          const z = zoomRef.current || 1;
+          const caretMm = (coords.left - pmRect.left) / z / PX_PER_MM;
+          const next = stops.find((s) => s > caretMm + 0.5);
+          let spaces: number;
+          if (next !== undefined) {
+            const gapPx = (next - caretMm) * PX_PER_MM;
+            spaces = Math.max(1, Math.round(gapPx / measureSpaceWidth()));
+          } else {
+            spaces = 4;
+          }
+          view.dispatch(view.state.tr.insertText(' '.repeat(spaces)));
+          return true;
+        } catch {
+          return false;
+        }
+      },
       // Clicks landing in an inter-page gap (the tall invisible spacer) snap
       // to the NEAREST text edge — end of the previous block when clicking
       // the upper area, start of the next block for the lower area — instead
@@ -1133,10 +1224,12 @@ export default function EditorPage() {
         <div className="bdoc-scroll min-h-0 flex-1 overflow-auto pb-16">
         <div className="mx-auto flex flex-col items-stretch" style={{ width: `${pageW}mm` }}>
           {/* Toolbar */}
-          <div className="sticky top-0 z-50 px-4 pt-2 pb-4 bg-gradient-to-b from-workspace via-workspace/95 to-transparent no-print">
-            <Toolbar editor={editor} zoom={zoom} onZoomChange={handleZoomChange} onPrint={() => window.print()} />
+          <div className="sticky top-0 z-50 pt-2 pb-4 bg-gradient-to-b from-workspace via-workspace/95 to-transparent no-print">
+            <div className="px-4">
+              <Toolbar editor={editor} zoom={zoom} onZoomChange={handleZoomChange} onPrint={() => window.print()} />
+            </div>
             {showRuler && (
-              <Ruler pageWidthMm={pageW} marginMm={pageM} onMarginChange={handleMarginChange} />
+              <Ruler editor={editor} pageWidthMm={pageW} marginMm={pageM} onMarginChange={handleMarginChange} />
             )}
           </div>
         </div>

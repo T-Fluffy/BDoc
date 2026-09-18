@@ -67,11 +67,62 @@ public static class DocxService
                 @"<div\b[^>]*\bdata-user-break\s*=\s*(""true""|'true')[^>]*>.*?</div>",
                 "<p style=\"page-break-after: always;\"></p>",
                 RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // Tab stops: collect per-block positions (document order) and mark
+            // each tabbed block with an invisible marker run; the stops are
+            // written as real w:tabs after conversion (converter ignores them).
+            var tabStops = new List<List<double>>();
+            bodyHtml = Regex.Replace(
+                bodyHtml,
+                @"<(p|h[1-6])\b([^>]*\bdata-tab-stops\s*=\s*""([^""]*)""[^>]*)>",
+                m =>
+                {
+                    var nums = m.Groups[3].Value.Split(',')
+                        .Select(s => double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : double.NaN)
+                        .Where(double.IsFinite)
+                        .ToList();
+                    tabStops.Add(nums);
+                    return m.Value + "<span>" + (char)0x200B + (char)0x200C + "</span>";
+                },
+                RegexOptions.IgnoreCase);
             await converter.ParseBody(bodyHtml);
-            ApplyPageSettings(mainPart, settingsJson);
-            mainPart.Document!.Save();
+        ApplyPageSettings(mainPart, settingsJson);
+        ApplyTabStops(mainPart, tabStops);
+        mainPart.Document!.Save();
+    }
+    return ms.ToArray();
+}
+
+    /// <summary>
+    /// Writes collected tab stops as real w:tabs. Marker runs (invisible
+    /// ZWSP+ZWNJ text injected before conversion) identify tabbed paragraphs
+    /// in document order; markers are removed so Word shows nothing extra.
+    /// Positions are mm from the content area == twips from the margin.
+    /// </summary>
+    private static void ApplyTabStops(MainDocumentPart mainPart, List<List<double>> tabStops)
+    {
+        if (tabStops.Count == 0) return;
+        int k = 0;
+        foreach (var para in mainPart.Document!.Body!.Descendants<Paragraph>().ToList())
+        {
+            var marker = para.Descendants<Text>().FirstOrDefault(t => (t.Text ?? "").Contains("\u200B\u200C"));
+            if (marker is null) continue;
+            if (k >= tabStops.Count) break;
+            var stops = tabStops[k++];
+            var run = marker.Parent as Run;
+            marker.Text = (marker.Text ?? "").Replace("\u200B\u200C", "");
+            if (string.IsNullOrEmpty(marker.Text))
+            {
+                marker.Remove();
+                if (run is not null && run.ChildElements.Count == 0) run.Remove();
+            }
+            if (stops.Count == 0) continue;
+            var pPr = para.GetFirstChild<ParagraphProperties>() ?? para.PrependChild(new ParagraphProperties());
+            pPr.AppendChild(new Tabs(stops.Select(s => new TabStop
+            {
+                Val = TabStopValues.Left,
+                Position = (int)Math.Round(s * 1440 / 25.4),
+            })));
         }
-        return ms.ToArray();
     }
 
     private static void ApplyPageSettings(MainDocumentPart mainPart, string? settingsJson)

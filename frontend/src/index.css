@@ -272,6 +272,68 @@
   border: 5px solid transparent;
   border-top: 8px solid var(--accent);
 }
+/* Paragraph indent markers: first-line triangle (top), left-indent (bottom) */
+.bdoc-ruler-indent {
+  position: absolute;
+  width: 12px;
+  transform: translateX(-50%);
+  cursor: ew-resize;
+  z-index: 3;
+}
+.bdoc-ruler-indent.first {
+  top: 0;
+  height: 12px;
+}
+.bdoc-ruler-indent.first::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top: 8px solid var(--success);
+}
+.bdoc-ruler-indent.left {
+  bottom: 0;
+  height: 12px;
+}
+.bdoc-ruler-indent.left::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom: 8px solid var(--success);
+}
+/* Tab stop marker (L-shape) */
+.bdoc-ruler-tab {
+  position: absolute;
+  width: 12px;
+  height: 14px;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
+  z-index: 4;
+}
+.bdoc-ruler-tab::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--accent);
+}
+.bdoc-ruler-tab::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  width: 8px;
+  height: 2px;
+  background: var(--accent);
+}
 
 /* Static print snapshot host — hidden on screen, built from live content. */
 .bdoc-print {

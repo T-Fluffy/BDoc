@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -126,8 +127,26 @@ public static class DocxToHtmlService
     {
         var (tag, style) = GetParagraphTagAndStyle(paragraph);
         var attrs = style.Length > 0 ? $" style=\"{style}\"" : "";
+        var tabs = ReadTabStops(paragraph.ParagraphProperties);
+        if (tabs.Length > 0) attrs += $" data-tab-stops=\"{tabs}\"";
         var inner = ConvertParagraphInner(paragraph, mainPart);
         return $"<{tag}{attrs}>{inner}</{tag}>";
+    }
+
+    /// <summary>Reads w:tabs positions as comma-separated mm (for the editor ruler).</summary>
+    private static string ReadTabStops(ParagraphProperties? pPr)
+    {
+        var tabs = pPr?.GetFirstChild<Tabs>();
+        if (tabs is null) return "";
+        var list = new List<string>();
+        foreach (var tab in tabs.Elements<TabStop>())
+        {
+            if (tab.Position is null) continue;
+            var mm = Math.Round(tab.Position.Value * 25.4 / 1440, 1);
+            if (mm >= 0 && mm <= 500) list.Add(mm.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (list.Count >= 24) break;
+        }
+        return string.Join(",", list);
     }
 
     private static string ConvertParagraphInner(Paragraph paragraph, MainDocumentPart mainPart)
@@ -270,7 +289,10 @@ public static class DocxToHtmlService
             switch (child)
             {
                 case Text text:
-                    inner.Append(WebUtility.HtmlEncode(text.Text));
+                    // Strip our tab-stop marker runs (ZWSP + ZWNJs); lone ZWSPs
+                    // are left alone (legit content in some scripts).
+                    inner.Append(WebUtility.HtmlEncode(
+                        Regex.Replace(text.Text ?? "", "\\u200B\\u200C+", "")));
                     break;
                 case Break br when br.Type?.Value == BreakValues.Page:
                     inner.Append("<br/>");
