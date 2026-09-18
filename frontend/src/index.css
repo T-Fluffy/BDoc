@@ -157,10 +157,14 @@
   widows: 2;
 }
 
-/* Invisible page-boundary spacer (height driven by --page-gap to match sheets) */
+/* Invisible page-boundary spacer (height fitted per page by the paginator).
+   Click-through: the spacer is a tall non-selectable atom — letting pointer
+   events pass through means clicks in the inter-page area map to the nearest
+   text position instead of snapping across the page break. */
 .page-break {
   display: block;
   height: var(--page-gap, 0);
+  pointer-events: none;
 }
 
 /* Word-like break hygiene: keep headings with the following content and never

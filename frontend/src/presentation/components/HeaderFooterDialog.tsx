@@ -166,7 +166,7 @@ export default function HeaderFooterDialog({ settings, onChange, onClose }: Head
           </section>
 
           <p className="text-xs text-ink-faint">
-            Click a header or footer zone on any page to reopen this dialog. Saved with the document.
+            Double-click a header or footer zone on any page to reopen this dialog. Saved with the document.
           </p>
         </div>
       </div>

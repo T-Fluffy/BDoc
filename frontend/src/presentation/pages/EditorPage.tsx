@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Node, Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { Selection } from '@tiptap/pm/state';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Paragraph from '@tiptap/extension-paragraph';
@@ -603,6 +604,53 @@ export default function EditorPage() {
     extensions,
     content: '<p></p>',
     immediatelyRender: false,
+    editorProps: {
+      // Clicks landing in an inter-page gap (the tall invisible spacer) snap
+      // to the NEAREST text edge — end of the previous block when clicking
+      // the upper area, start of the next block for the lower area — instead
+      // of ProseMirror's default which always jumps across the break.
+      handleClick: (view, _pos, event) => {
+        if (!(event instanceof MouseEvent) || event.button !== 0) return false;
+        const pm = view.dom as HTMLElement;
+        const brs = Array.from(pm.querySelectorAll('.page-break')) as HTMLElement[];
+        // Match the whole inter-block span (prev bottom → next top), which
+        // includes the adjoining margins — a click 8px below a paragraph is
+        // still inside its margin zone, not the spacer div itself.
+        let hit: HTMLElement | null = null;
+        let dPrev = Infinity;
+        let dNext = Infinity;
+        for (const b of brs) {
+          const r = b.getBoundingClientRect();
+          if (event.clientX < r.left || event.clientX > r.right) continue;
+          const prev = b.previousElementSibling;
+          const next = b.nextElementSibling;
+          if (!(prev instanceof HTMLElement) || !(next instanceof HTMLElement)) continue;
+          const top = prev.getBoundingClientRect().bottom;
+          const bottom = next.getBoundingClientRect().top;
+          if (event.clientY >= top && event.clientY <= bottom) {
+            hit = b;
+            dPrev = event.clientY - top;
+            dNext = bottom - event.clientY;
+            break;
+          }
+        }
+        if (!hit) return false;
+        const kids = Array.from(pm.children);
+        const di = kids.indexOf(hit);
+        if (di < 0 || view.state.doc.child(di).type.name !== 'pageBreak') return false;
+        let p = 0;
+        for (let i = 0; i < di; i++) p += view.state.doc.child(i).nodeSize;
+        const dir = dPrev <= dNext ? -1 : 1;
+        try {
+          const sel = Selection.findFrom(view.state.doc.resolve(p), dir);
+          if (!sel) return false;
+          view.dispatch(view.state.tr.setSelection(sel));
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    },
     onUpdate: ({ editor: ed }) => {
       setSaveStatus('dirty');
       scheduleSave();
@@ -815,6 +863,24 @@ export default function EditorPage() {
     window.setTimeout(schedulePaginate, 250);
   };
 
+  // Single click on a header/footer zone moves the caret into the adjacent
+  // body text (double-click opens the header/footer dialog instead).
+  const placeCaretNearZone = useCallback((e: React.MouseEvent, kind: 'header' | 'footer') => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = kind === 'header' ? r.bottom + 4 : r.top - 4;
+    const found = ed.view.posAtCoords({ left: e.clientX, top: y });
+    if (!found) return;
+    try {
+      const sel = Selection.near(ed.state.doc.resolve(found.pos));
+      ed.view.dispatch(ed.state.tr.setSelection(sel));
+      ed.view.focus();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const handleHeaderFooterChange = (hf: HeaderFooterSettings) => {
     handlePageSettingsChange({ ...pageSettingsRef.current, headerFooter: hf });
   };
@@ -1024,8 +1090,9 @@ export default function EditorPage() {
                       <div
                         className="page-header-zone"
                         data-page={pg}
-                        title="Edit header"
-                        onClick={() => setHfDialogOpen(true)}
+                        title="Double-click to edit header"
+                        onClick={(e) => placeCaretNearZone(e, 'header')}
+                        onDoubleClick={() => setHfDialogOpen(true)}
                         style={{
                           top: `${i * unitMm + pageM * 0.2}mm`,
                           left: `${pageM}mm`,
@@ -1040,8 +1107,9 @@ export default function EditorPage() {
                       <div
                         className="page-footer-zone"
                         data-page={pg}
-                        title="Edit footer"
-                        onClick={() => setHfDialogOpen(true)}
+                        title="Double-click to edit footer"
+                        onClick={(e) => placeCaretNearZone(e, 'footer')}
+                        onDoubleClick={() => setHfDialogOpen(true)}
                         style={{
                           top: `${i * unitMm + pageH - pageM * 0.8}mm`,
                           left: `${pageM}mm`,
