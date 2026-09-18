@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Node, Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { Selection } from '@tiptap/pm/state';
+import { Selection, TextSelection } from '@tiptap/pm/state';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Paragraph from '@tiptap/extension-paragraph';
@@ -853,6 +853,67 @@ export default function EditorPage() {
     window.addEventListener('beforeprint', onBeforePrint);
     return () => window.removeEventListener('beforeprint', onBeforePrint);
   }, [rebuildPrintSnapshot]);
+
+  // Clicks landing in empty page areas (margins, padding, blank space below
+  // content) hit the .bdoc-page stack container, never ProseMirror — without
+  // this, the caret silently refuses to move there. Map the click to the
+  // nearest text position (Word-style single click) and support drag-select
+  // from empty space. Clicks inside .ProseMirror are left to ProseMirror
+  // (text, gap snapping) and header/footer zones keep their own handlers.
+  // NOTE: depends on loading + document id too — the stack subtree mounts
+  // only after load and remounts on every document switch; without this the
+  // listener stays attached to a detached node forever.
+  useEffect(() => {
+    if (!editor || loading) return;
+    const stack = (editor.view.dom as HTMLElement).closest('.bdoc-page') as HTMLElement | null;
+    if (!stack) return;
+    const placeAt = (clientX: number, clientY: number): number | null => {
+      // posAtCoords returns null outside the editor root's box, so clamp
+      // into it first — the clamped point maps to the nearest text.
+      const pm = editor.view.dom as HTMLElement;
+      const r = pm.getBoundingClientRect();
+      const x = Math.min(Math.max(clientX, r.left), Math.max(r.left, r.right - 1));
+      const y = Math.min(Math.max(clientY, r.top), Math.max(r.top, r.bottom - 1));
+      const found = editor.view.posAtCoords({ left: x, top: y });
+      if (!found) return null;
+      try {
+        const sel = Selection.near(editor.state.doc.resolve(found.pos));
+        editor.view.dispatch(editor.state.tr.setSelection(sel));
+        editor.view.focus();
+        return sel.$head.pos;
+      } catch {
+        return null;
+      }
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0 || e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      if (t && typeof t.closest === 'function' && t.closest('.ProseMirror')) return;
+      e.preventDefault();
+      const anchor = placeAt(e.clientX, e.clientY);
+      if (anchor === null) return;
+      const anchorPos = anchor;
+      const onMove = (me: MouseEvent) => {
+        try {
+          const found = editor.view.posAtCoords({ left: me.clientX, top: me.clientY });
+          if (!found) return;
+          const head = Selection.near(editor.state.doc.resolve(found.pos)).$head.pos;
+          editor.view.dispatch(
+            editor.state.tr.setSelection(TextSelection.create(editor.state.doc, anchorPos, head)),
+          );
+        } catch {
+          /* ignore transient positions */
+        }
+      };
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp, { once: true });
+    };
+    stack.addEventListener('mousedown', onMouseDown);
+    return () => stack.removeEventListener('mousedown', onMouseDown);
+  }, [editor, loading, document?.id]);
 
   // Re-paginate when async resources settle: fonts, full page load, and
   // images change block heights without firing any editor transaction.
