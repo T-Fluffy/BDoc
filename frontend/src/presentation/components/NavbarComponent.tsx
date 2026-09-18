@@ -2,28 +2,42 @@ import { useState, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
+  FaAlignCenter,
+  FaAlignJustify,
+  FaAlignLeft,
+  FaAlignRight,
   FaBars,
   FaCog,
+  FaEraser,
+  FaExpand,
   FaFileAlt,
   FaFileImport,
   FaFileWord,
   FaImage,
+  FaLink,
+  FaListOl,
+  FaListUl,
   FaMoon,
   FaPlus,
   FaPrint,
   FaSignOutAlt,
   FaSpinner,
+  FaSubscript,
   FaSun,
+  FaSuperscript,
   FaTable,
   FaTimesCircle,
   FaUserCircle,
 } from 'react-icons/fa';
 import { useTheme } from '../theme/useTheme';
 import { useAuth } from '../context/AuthContext';
+import DocsMenu, { type DocsMenuItem } from './DocsMenu';
+import ParagraphMenu from './ParagraphMenu';
 import {
   PAGE_SIZES,
   MARGIN_PRESETS,
   ZOOM_PRESETS,
+  resolveHeaderFooter,
   type PageSettings,
 } from '../../domain/models/PageSettings';
 
@@ -45,6 +59,11 @@ interface NavbarProps {
   onEditHeaderFooter?: () => void;
   showRuler?: boolean;
   onToggleRuler?: () => void;
+  showStatusBar?: boolean;
+  onToggleStatusBar?: () => void;
+  onFindReplace?: () => void;
+  onWordCount?: () => void;
+  onHelp?: () => void;
   title?: string;
   onTitleChange?: (value: string) => void;
   titleStatus?: ReactNode;
@@ -68,6 +87,11 @@ export default function NavbarComponent({
   onEditHeaderFooter,
   showRuler,
   onToggleRuler,
+  showStatusBar,
+  onToggleStatusBar,
+  onFindReplace,
+  onWordCount,
+  onHelp,
   title,
   onTitleChange,
   titleStatus,
@@ -76,7 +100,9 @@ export default function NavbarComponent({
   const location = useLocation();
   const { mode, setMode } = useTheme();
   const { logout } = useAuth();
-  const [menu, setMenu] = useState<'insert' | 'file' | 'page' | 'user' | 'zoom' | null>(null);
+  const [menu, setMenu] = useState<
+    'insert' | 'file' | 'page' | 'user' | 'zoom' | 'edit' | 'view' | 'format' | 'tools' | 'help' | null
+  >(null);
 
   const updatePage = (patch: Partial<PageSettings>) => {
     if (pageSettings && onPageSettingsChange) {
@@ -99,10 +125,61 @@ export default function NavbarComponent({
     closeMenu();
   };
 
-  const insertOptions = [
-    { label: 'Insert Image', icon: <FaImage />, action: addImage },
-    { label: 'Insert Table', icon: <FaTable />, action: addTable },
-  ];
+  const promptLink = () => {
+    if (!editor) return;
+    const current = editor.getAttributes('link').href as string | undefined;
+    const url = window.prompt('Link URL', current ?? 'https://');
+    if (url === null) return;
+    if (url === '') editor.chain().focus().unsetLink().run();
+    else editor.chain().focus().toggleLink({ href: url }).run();
+    closeMenu();
+  };
+
+  const clearFormatting = () => {
+    if (!editor) return;
+    editor.chain().focus().unsetAllMarks().run();
+    const patch = { lineHeight: null, marginTop: null, marginBottom: null, textIndent: null, paddingLeft: null };
+    if (editor.isActive('heading')) editor.chain().focus().updateAttributes('heading', patch).run();
+    else editor.chain().focus().updateAttributes('paragraph', patch).run();
+    closeMenu();
+  };
+
+  const setLineHeight = (v: string | null) => {
+    if (!editor) return;
+    const patch = { lineHeight: v };
+    if (editor.isActive('heading')) editor.chain().focus().updateAttributes('heading', patch).run();
+    else editor.chain().focus().updateAttributes('paragraph', patch).run();
+    closeMenu();
+  };
+
+  const curLineHeight = (() => {
+    if (!editor) return '';
+    const a = editor.isActive('heading') ? editor.getAttributes('heading') : editor.getAttributes('paragraph');
+    return String(a?.lineHeight ?? '');
+  })();
+
+  const insertUserBreak = () => {
+    if (editor) editor.chain().focus().insertContent({ type: 'pageBreak', attrs: { user: true } }).run();
+    closeMenu();
+  };
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined);
+    else document.documentElement.requestFullscreen().catch(() => undefined);
+    closeMenu();
+  };
+
+  const togglePageNumbers = () => {
+    if (!pageSettings || !onPageSettingsChange) return;
+    const hf = resolveHeaderFooter(pageSettings);
+    onPageSettingsChange({
+      ...pageSettings,
+      headerFooter: { ...hf, pageNumbersEnabled: !hf.pageNumbersEnabled },
+    });
+    closeMenu();
+  };
+
+  const pnChecked = pageSettings ? resolveHeaderFooter(pageSettings).pageNumbersEnabled : false;
 
   const fileOptions = [
     { label: 'New', icon: <FaPlus />, action: () => { onNew?.(); closeMenu(); }, hide: false },
@@ -117,12 +194,6 @@ export default function NavbarComponent({
     logout();
     navigate('/login');
   };
-
-  // Docs-style text menu button (shared by the menu row).
-  const menuBtn = (active: boolean) =>
-    `px-2 py-1 rounded-md text-sm whitespace-nowrap transition-colors ${
-      active ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:text-ink hover:bg-soft'
-    }`;
 
   return (
     <nav className="shrink-0 bg-canvas/80 backdrop-blur-xl border-b border-[var(--border)] px-4 pt-2 pb-1.5 relative z-[100] no-print">
@@ -250,174 +321,261 @@ export default function NavbarComponent({
           </button>
         )}
 
-        <div className="relative">
-          <button onClick={() => setMenu(menu === 'file' ? null : 'file')} className={menuBtn(menu === 'file')}>
-            File
-          </button>
-
-            {menu === 'file' && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-                <div className="absolute left-0 mt-2 w-64 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150 z-50">
-                  <div className="p-1.5">
-                    {fileOptions.map((opt) => {
-                      if (!isEditing && !['New', 'Import Word document (.docx)'].includes(opt.label)) return null;
-                      return opt.label === 'divider' ? (
-                        <div key="divider" className="my-1 border-t border-[var(--border)]" />
-                      ) : (
-                        <button
-                          key={opt.label}
-                          onClick={opt.action}
-                          disabled={Boolean(importing || exporting)}
-                          className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-ink-muted hover:text-ink hover:bg-soft transition-colors disabled:opacity-60"
-                        >
-                          <span className="text-accent">{opt.icon}</span>
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
+        <DocsMenu
+          label="File"
+          open={menu === 'file'}
+          onOpen={() => setMenu('file')}
+          onClose={closeMenu}
+          items={fileOptions
+            .filter((opt) => isEditing || ['New', 'Import Word document (.docx)'].includes(opt.label))
+            .map((opt) =>
+              opt.label === 'divider'
+                ? { key: 'file-div', divider: true }
+                : {
+                    key: opt.label,
+                    label: opt.label,
+                    icon: opt.icon,
+                    disabled: Boolean(importing || exporting),
+                    action: opt.action,
+                  },
             )}
-          </div>
+        />
 
-        {isEditing && pageSettings && (
-          <div className="relative">
-            <button onClick={() => setMenu(menu === 'page' ? null : 'page')} className={menuBtn(menu === 'page')}>
-              Page
-            </button>
-
-            {menu === 'page' && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-                <div className="absolute left-0 mt-2 w-56 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] p-3 z-50 animate-in fade-in zoom-in duration-150">
-                  <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2.5 text-center">
-                    Page format
-                  </p>
-
-                  <label className="block mb-3">
-                    <span className="text-[10px] uppercase tracking-widest text-ink-faint block mb-1">Page size</span>
-                    <select
-                      value={pageSettings.size}
-                      onChange={(e) => updatePage({ size: e.target.value as PageSettings['size'] })}
-                      className="w-full h-8 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-2 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
-                    >
-                      {PAGE_SIZES.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="block mb-3">
-                    <span className="text-[10px] uppercase tracking-widest text-ink-faint block mb-1">Orientation</span>
-                    <select
-                      value={pageSettings.orientation}
-                      onChange={(e) => updatePage({ orientation: e.target.value as PageSettings['orientation'] })}
-                      className="w-full h-8 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-2 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
-                    >
-                      <option value="portrait">Portrait</option>
-                      <option value="landscape">Landscape</option>
-                    </select>
-                  </label>
-
-                  <label className="block">
-                    <span className="text-[10px] uppercase tracking-widest text-ink-faint block mb-1">Margins</span>
-                    <select
-                      value={pageSettings.margins}
-                      onChange={(e) => updatePage({ margins: e.target.value as PageSettings['margins'] })}
-                      className="w-full h-8 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-2 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
-                    >
-                      {MARGIN_PRESETS.map((m) => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
-                      ))}
-                    </select>
-                  </label>
-
-                  {onEditHeaderFooter && (
-                    <button
-                      onClick={() => { onEditHeaderFooter(); closeMenu(); }}
-                      className="mt-3 w-full flex items-center justify-center gap-2 p-2 rounded-lg text-sm text-accent bg-accent-soft hover:brightness-110 transition-all"
-                    >
-                      Header &amp; footer…
-                    </button>
-                  )}
-
-                  {onToggleRuler && (
-                    <label className="mt-2 flex items-center gap-2 px-2 text-sm text-ink-muted cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={showRuler !== false}
-                        onChange={onToggleRuler}
-                        className="accent-[var(--accent)]"
-                      />
-                      Show ruler
-                    </label>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {isEditing && zoom !== undefined && onZoomChange && (
-          <div className="relative">
-            <button onClick={() => setMenu(menu === 'zoom' ? null : 'zoom')} className={menuBtn(menu === 'zoom')}>
-              {Math.round(zoom * 100)}%
-            </button>
-
-            {menu === 'zoom' && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-                <div className="absolute left-0 mt-2 w-40 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150 z-50">
-                  <div className="p-1.5">
-                    {ZOOM_PRESETS.map((z) => (
-                      <button
-                        key={z}
-                        onClick={() => { onZoomChange(z); closeMenu(); }}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-lg text-sm transition-colors ${
-                          z === zoom
-                            ? 'text-accent bg-accent-soft'
-                            : 'text-ink-muted hover:text-ink hover:bg-soft'
-                        }`}
-                      >
-                        {Math.round(z * 100)}%
-                        {z === zoom && <span aria-hidden>✓</span>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+        {isEditing && editor && (
+          <DocsMenu
+            label="Edit"
+            open={menu === 'edit'}
+            onOpen={() => setMenu('edit')}
+            onClose={closeMenu}
+            items={[
+              { key: 'undo', label: 'Undo', shortcut: 'Ctrl+Z', disabled: !editor.can().undo(), action: () => { editor.chain().focus().undo().run(); closeMenu(); } },
+              { key: 'redo', label: 'Redo', shortcut: 'Ctrl+Y', disabled: !editor.can().redo(), action: () => { editor.chain().focus().redo().run(); closeMenu(); } },
+              { key: 'edit-div', divider: true },
+              { key: 'selectall', label: 'Select all', shortcut: 'Ctrl+A', action: () => { editor.chain().focus().selectAll().run(); closeMenu(); } },
+              { key: 'find', label: 'Find and replace…', shortcut: 'Ctrl+H', action: () => { onFindReplace?.(); closeMenu(); } },
+            ]}
+          />
         )}
 
         {isEditing && (
-          <div className="relative">
-            <button onClick={() => setMenu(menu === 'insert' ? null : 'insert')} className={menuBtn(menu === 'insert')}>
-              Insert
-            </button>
+          <DocsMenu
+            label="View"
+            open={menu === 'view'}
+            onOpen={() => setMenu('view')}
+            onClose={closeMenu}
+            items={[
+              ...(onToggleRuler
+                ? [{ key: 'ruler', label: 'Show ruler', checked: showRuler !== false, keepOpen: true, action: () => onToggleRuler() }]
+                : []),
+              ...(onToggleStatusBar
+                ? [{ key: 'status', label: 'Show status bar', checked: showStatusBar !== false, keepOpen: true, action: () => onToggleStatusBar() }]
+                : []),
+              { key: 'view-div', divider: true },
+              { key: 'full', label: 'Fullscreen', icon: <FaExpand />, action: toggleFullscreen },
+            ]}
+          />
+        )}
 
-            {menu === 'insert' && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-                <div className="absolute left-0 mt-2 w-48 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150 z-50">
-                  <div className="p-1.5">
-                    {insertOptions.map((opt) => (
-                      <button
-                        key={opt.label}
-                        onClick={opt.action}
-                        className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-ink-muted hover:text-ink hover:bg-soft transition-colors"
+        {isEditing && pageSettings && (
+          <DocsMenu
+            label="Page"
+            open={menu === 'page'}
+            onOpen={() => setMenu('page')}
+            onClose={closeMenu}
+            items={[
+              {
+                key: 'page-custom',
+                custom: (
+                  <>
+                    <p className="text-[10px] uppercase tracking-widest text-ink-faint mb-2.5 text-center">
+                      Page format
+                    </p>
+
+                    <label className="block mb-3">
+                      <span className="text-[10px] uppercase tracking-widest text-ink-faint block mb-1">Page size</span>
+                      <select
+                        value={pageSettings.size}
+                        onChange={(e) => updatePage({ size: e.target.value as PageSettings['size'] })}
+                        className="w-full h-8 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-2 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
                       >
-                        <span className="text-accent">{opt.icon}</span>
-                        {opt.label}
+                        {PAGE_SIZES.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block mb-3">
+                      <span className="text-[10px] uppercase tracking-widest text-ink-faint block mb-1">Orientation</span>
+                      <select
+                        value={pageSettings.orientation}
+                        onChange={(e) => updatePage({ orientation: e.target.value as PageSettings['orientation'] })}
+                        className="w-full h-8 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-2 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
+                      >
+                        <option value="portrait">Portrait</option>
+                        <option value="landscape">Landscape</option>
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="text-[10px] uppercase tracking-widest text-ink-faint block mb-1">Margins</span>
+                      <select
+                        value={pageSettings.margins}
+                        onChange={(e) => updatePage({ margins: e.target.value as PageSettings['margins'] })}
+                        className="w-full h-8 rounded-lg bg-surface text-xs text-ink-muted border border-[var(--border)] px-2 focus:outline-none hover:bg-soft hover:text-ink transition-colors"
+                      >
+                        {MARGIN_PRESETS.map((m) => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    {onEditHeaderFooter && (
+                      <button
+                        onClick={() => { onEditHeaderFooter(); closeMenu(); }}
+                        className="mt-3 w-full flex items-center justify-center gap-2 p-2 rounded-lg text-sm text-accent bg-accent-soft hover:brightness-110 transition-all"
+                      >
+                        Header &amp; footer…
                       </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+                    )}
+
+                    {onToggleRuler && (
+                      <label className="mt-2 flex items-center gap-2 px-2 text-sm text-ink-muted cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={showRuler !== false}
+                          onChange={onToggleRuler}
+                          className="accent-[var(--accent)]"
+                        />
+                        Show ruler
+                      </label>
+                    )}
+                  </>
+                ),
+              },
+            ]}
+          />
+        )}
+
+        {isEditing && zoom !== undefined && onZoomChange && (
+          <DocsMenu
+            label={`${Math.round(zoom * 100)}%`}
+            open={menu === 'zoom'}
+            onOpen={() => setMenu('zoom')}
+            onClose={closeMenu}
+            items={ZOOM_PRESETS.map((z) => ({
+              key: String(z),
+              label: `${Math.round(z * 100)}%`,
+              checked: z === zoom,
+              action: () => { onZoomChange(z); closeMenu(); },
+            }))}
+          />
+        )}
+
+        {isEditing && (
+          <DocsMenu
+            label="Insert"
+            open={menu === 'insert'}
+            onOpen={() => setMenu('insert')}
+            onClose={closeMenu}
+            items={[
+              { key: 'img', label: 'Insert Image', icon: <FaImage />, action: addImage },
+              { key: 'tbl', label: 'Insert Table', icon: <FaTable />, action: addTable },
+              { key: 'ins-div1', divider: true },
+              { key: 'link', label: 'Link…', icon: <FaLink />, action: promptLink },
+              ...(onEditHeaderFooter
+                ? [{ key: 'hf', label: 'Header & footer…', action: () => { onEditHeaderFooter(); closeMenu(); } }]
+                : []),
+              { key: 'pnum', label: 'Page numbers', checked: pnChecked, keepOpen: true, action: togglePageNumbers },
+              { key: 'pbreak', label: 'Page break', action: insertUserBreak },
+            ]}
+          />
+        )}
+
+        {isEditing && editor && (
+          <DocsMenu
+            label="Format"
+            open={menu === 'format'}
+            onOpen={() => setMenu('format')}
+            onClose={closeMenu}
+            items={[
+              {
+                key: 'text',
+                label: 'Text',
+                children: [
+                  { key: 'bold', label: 'Bold', shortcut: 'Ctrl+B', checked: editor.isActive('bold'), action: () => { editor.chain().focus().toggleBold().run(); closeMenu(); } },
+                  { key: 'italic', label: 'Italic', shortcut: 'Ctrl+I', checked: editor.isActive('italic'), action: () => { editor.chain().focus().toggleItalic().run(); closeMenu(); } },
+                  { key: 'underline', label: 'Underline', shortcut: 'Ctrl+U', checked: editor.isActive('underline'), action: () => { editor.chain().focus().toggleUnderline().run(); closeMenu(); } },
+                  { key: 'strike', label: 'Strikethrough', checked: editor.isActive('strike'), action: () => { editor.chain().focus().toggleStrike().run(); closeMenu(); } },
+                  { key: 'sup', label: 'Superscript', icon: <FaSuperscript />, checked: editor.isActive('superscript'), action: () => { editor.chain().focus().toggleSuperscript().run(); closeMenu(); } },
+                  { key: 'sub', label: 'Subscript', icon: <FaSubscript />, checked: editor.isActive('subscript'), action: () => { editor.chain().focus().toggleSubscript().run(); closeMenu(); } },
+                ],
+              },
+              {
+                key: 'align',
+                label: 'Align',
+                children: [
+                  { key: 'al', label: 'Left', icon: <FaAlignLeft />, checked: editor.isActive({ textAlign: 'left' }), action: () => { editor.chain().focus().setTextAlign('left').run(); closeMenu(); } },
+                  { key: 'ac', label: 'Center', icon: <FaAlignCenter />, checked: editor.isActive({ textAlign: 'center' }), action: () => { editor.chain().focus().setTextAlign('center').run(); closeMenu(); } },
+                  { key: 'ar', label: 'Right', icon: <FaAlignRight />, checked: editor.isActive({ textAlign: 'right' }), action: () => { editor.chain().focus().setTextAlign('right').run(); closeMenu(); } },
+                  { key: 'aj', label: 'Justify', icon: <FaAlignJustify />, checked: editor.isActive({ textAlign: 'justify' }), action: () => { editor.chain().focus().setTextAlign('justify').run(); closeMenu(); } },
+                ],
+              },
+              {
+                key: 'linesp',
+                label: 'Line spacing',
+                children: [
+                  { key: 'lh-d', label: 'Default', checked: curLineHeight === '', action: () => setLineHeight(null) },
+                  ...['1', '1.15', '1.5', '1.8', '2', '2.5'].map((v) => ({
+                    key: `lh-${v}`,
+                    label: v,
+                    checked: curLineHeight === v,
+                    action: () => setLineHeight(v),
+                  })),
+                ],
+              },
+              {
+                key: 'bullets',
+                label: 'Bullets & numbering',
+                children: [
+                  { key: 'bl', label: 'Bulleted list', icon: <FaListUl />, checked: editor.isActive('bulletList'), action: () => { editor.chain().focus().toggleBulletList().run(); closeMenu(); } },
+                  { key: 'nl', label: 'Numbered list', icon: <FaListOl />, checked: editor.isActive('orderedList'), action: () => { editor.chain().focus().toggleOrderedList().run(); closeMenu(); } },
+                ],
+              },
+              {
+                key: 'paraset',
+                label: 'Paragraph settings…',
+                custom: <ParagraphMenu editor={editor} onClose={closeMenu} />,
+              },
+              { key: 'fmt-div', divider: true },
+              { key: 'clear', label: 'Clear formatting', icon: <FaEraser />, action: clearFormatting },
+            ]}
+          />
+        )}
+
+        {isEditing && (
+          <DocsMenu
+            label="Tools"
+            open={menu === 'tools'}
+            onOpen={() => setMenu('tools')}
+            onClose={closeMenu}
+            items={[
+              { key: 'wc', label: 'Word count…', action: () => { onWordCount?.(); closeMenu(); } },
+              { key: 'find', label: 'Find and replace…', shortcut: 'Ctrl+H', action: () => { onFindReplace?.(); closeMenu(); } },
+            ]}
+          />
+        )}
+
+        {isEditing && (
+          <DocsMenu
+            label="Help"
+            open={menu === 'help'}
+            onOpen={() => setMenu('help')}
+            onClose={closeMenu}
+            items={[
+              { key: 'keys', label: 'Keyboard shortcuts', action: () => { onHelp?.(); closeMenu(); } },
+              { key: 'about', label: 'About BDoc', action: () => { onHelp?.(); closeMenu(); } },
+            ]}
+          />
         )}
       </div>
     </nav>

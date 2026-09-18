@@ -15,11 +15,18 @@ import FontFamily from '@tiptap/extension-font-family';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import TextAlign from '@tiptap/extension-text-align';
+import Underline from '@tiptap/extension-underline';
+import Link from '@tiptap/extension-link';
+import Subscript from '@tiptap/extension-subscript';
+import Superscript from '@tiptap/extension-superscript';
 import { FaSpinner } from 'react-icons/fa';
 import AppLayout from '../layout/AppLayout';
 import { Toolbar } from '../components/Toolbar';
 import Ruler from '../components/Ruler';
 import HeaderFooterDialog from '../components/HeaderFooterDialog';
+import FindReplaceDialog from '../components/FindReplaceDialog';
+import WordCountDialog from '../components/WordCountDialog';
+import HelpDialog from '../components/HelpDialog';
 import { getDocument, updateDocument } from '../../application/services/documentService';
 import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
 import { useDocuments } from '../../application/usecases/useDocument';
@@ -100,29 +107,45 @@ const PageBreak = Node.create({
   addAttributes() {
     return {
       h: { default: 0 },
+      // User-inserted manual break: never auto-removed, always kept as a
+      // forced page boundary, persisted across save/load.
+      user: { default: false },
     };
   },
   parseHTML() {
     return [{
       tag: 'div.page-break',
-      getAttrs: (dom) => ({ h: parseFloat((dom as HTMLElement).style.height) || 0 }),
+      getAttrs: (dom) => {
+        const el = dom as HTMLElement;
+        return {
+          h: parseFloat(el.style.height) || 0,
+          user: el.dataset.userBreak === 'true',
+        };
+      },
     }];
   },
   renderHTML({ node }) {
     const h = typeof node.attrs.h === 'number' ? node.attrs.h : 0;
-    return ['div', { class: 'page-break', 'data-page-break': 'true', style: `height: ${h}px` }];
+    const attrs: Record<string, string> = {
+      class: 'page-break',
+      'data-page-break': 'true',
+      style: `height: ${h}px`,
+    };
+    if (node.attrs.user) attrs['data-user-break'] = 'true';
+    return ['div', attrs];
   },
 });
 
 const GAP_MM = 12;
 const PX_PER_MM = 96 / 25.4;
 
-// Remove the visual-only page-break spacers before persisting/exporting content.
+// Remove the visual-only AUTO page-break spacers before persisting/exporting.
+// User-inserted breaks (data-user-break) are real content and are kept.
 function stripPageBreaks(html: string): string {
   if (typeof document === 'undefined') return html;
   const div = document.createElement('div');
   div.innerHTML = html;
-  div.querySelectorAll('.page-break').forEach((el) => el.remove());
+  div.querySelectorAll('.page-break:not([data-user-break="true"])').forEach((el) => el.remove());
   return div.innerHTML;
 }
 
@@ -137,6 +160,10 @@ const extensions = [
   Color,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  Underline,
+  Link.configure({ openOnClick: false }),
+  Subscript,
+  Superscript,
   PageBreak,
 ];
 
@@ -160,6 +187,13 @@ export default function EditorPage() {
     if (typeof window === 'undefined') return true;
     return window.localStorage.getItem('bdoc-ruler') !== 'false';
   });
+  const [showStatusBar, setShowStatusBar] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return window.localStorage.getItem('bdoc-statusbar') !== 'false';
+  });
+  const [findOpen, setFindOpen] = useState(false);
+  const [wordCountOpen, setWordCountOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [wordCount, setWordCount] = useState(0);
@@ -295,6 +329,20 @@ export default function EditorPage() {
     if (rects.length > 0) heights[0] += Math.max(0, rects[0].mt);
     const unitPx = (pageH + GAP_MM) * PX_PER_MM;
     const baseSpacerPx = (2 * pageM + GAP_MM) * PX_PER_MM;
+    // User-inserted breaks are forced boundaries (content index before which
+    // the user break sits). Always kept; packing resets after them.
+    const forced = new Set<number>();
+    {
+      let fj = 0;
+      for (let i = 0; i < doc.childCount; i++) {
+        const node = doc.child(i);
+        if (node.type.name === 'pageBreak') {
+          if (node.attrs.user) forced.add(fj);
+          continue;
+        }
+        fj++;
+      }
+    }
     const desiredBreaks = new Set<number>();
     // Estimated spacer height per break: exact when the page sum is exact
     // (unitPx - pageSum); falls back to the fixed spacer on overflow pages.
@@ -302,6 +350,14 @@ export default function EditorPage() {
     let used = 0;
     let pageStart = 0;
     for (let i = 0; i < heights.length; i++) {
+      if (forced.has(i) && i > 0) {
+        desiredBreaks.add(i);
+        desiredHeights.set(i, used > innerPx ? baseSpacerPx : unitPx - used);
+        used = 0;
+        pageStart = i;
+        used += heights[i];
+        continue;
+      }
       if (i > 0 && used + heights[i] > innerPx) {
         let b = i;
         // Keep-with-next: never strand a heading (or a run of headings) alone
@@ -414,18 +470,15 @@ export default function EditorPage() {
       }
     }
     // Exact spacer fitting: measure what each spacer's height MUST be so the
-    // following content lands exactly on the next sheet top. Feed-forward —
-    // spacer heights never affect widths, wrapping, or anything above them —
-    // so this converges and can never accumulate drift: every page aligns
-    // from live measurement regardless of upstream error. Top-down single
-    // pass: corrections decided for spacers above are folded in, making the
-    // whole stack exact in one dispatch (no ripple across passes).
-    // Pure function of (doc state, live DOM children).
+    // following content lands exactly on the next sheet top. Feed-forward
+    // (spacer heights never affect widths or anything above), top-down single
+    // pass that folds in decided corrections — exact in one dispatch, and it
+    // can never accumulate drift. Pure function of (doc state, live DOM).
     const measureFitted = (
       stateDoc: typeof doc,
       kids: HTMLElement[],
-    ): Map<number, { pos: number; cur: number; need: number }> => {
-      const out = new Map<number, { pos: number; cur: number; need: number }>();
+    ): Map<number, { pos: number; cur: number; need: number; attrs: Record<string, unknown> }> => {
+      const out = new Map<number, { pos: number; cur: number; need: number; attrs: Record<string, unknown> }>();
       if (kids.length !== stateDoc.childCount) return out;
       const pm2 = editor.view.dom as HTMLElement;
       const z2 = zoomRef.current || 1;
@@ -449,7 +502,7 @@ export default function EditorPage() {
             // prevBottom measured in current layout; aboveCorr folds in the
             // shifts our own decided corrections will cause below.
             const need = Math.max(1, (sk + 1) * unitPx - (prevBottom + prevMb) - aboveCorr);
-            out.set(cj2, { pos: start, cur, need });
+            out.set(cj2, { pos: start, cur, need, attrs: { ...node.attrs } });
             aboveCorr += need - cur;
           }
           return;
@@ -471,12 +524,15 @@ export default function EditorPage() {
       );
     if (sameIndices && sameHeights) return;
 
-    const dispatchHeights = (entries: { pos: number; h: number }[]) => {
+    const dispatchHeights = (entries: { pos: number; h: number; attrs: Record<string, unknown> }[]) => {
       if (entries.length === 0) return false;
       const trx = editor.state.tr;
       trx.setMeta('addToHistory', false);
       for (const e of entries.sort((a, b) => b.pos - a.pos)) {
-        trx.setNodeMarkup(e.pos, undefined, { h: e.h });
+        // Merge: setNodeMarkup REPLACES the whole attrs object, so re-apply
+        // existing attrs (e.g. user:true) or height fitting would silently
+        // convert user breaks into auto ones (deleted on the next pass).
+        trx.setNodeMarkup(e.pos, undefined, { ...e.attrs, h: e.h });
       }
       if (!trx.docChanged) return false;
       lastPaginateDispatchRef.current = Date.now();
@@ -494,7 +550,9 @@ export default function EditorPage() {
         return prev === next ? prev : next;
       });
 
-      // Remove all existing page breaks (last to first so positions stay valid).
+      // Remove all AUTO page breaks (last to first so positions stay valid).
+      // User-inserted breaks are real content — never auto-removed (a leading
+      // user break the packer can't place is left alone, harmlessly).
       // Top-level doc content is indexed from 0 (the doc's own tokens are not
       // counted), so the first child starts at position 0.
       let tr = editor.state.tr;
@@ -503,22 +561,26 @@ export default function EditorPage() {
       for (let i = 0; i < doc.childCount; i++) {
         const before = pos;
         const node = doc.child(i);
-        if (node.type.name === 'pageBreak') delPos.push(before);
+        if (node.type.name === 'pageBreak' && !node.attrs.user) delPos.push(before);
         pos += node.nodeSize;
       }
       for (let k = delPos.length - 1; k >= 0; k--) {
         tr = tr.delete(delPos[k], delPos[k] + 1);
       }
 
-      // Position before each content node (in the now break-free doc), then
-      // insert the desired breaks from highest position to lowest, seeded
+      // Position before each content node in the post-deletion doc (auto breaks
+      // removed, user breaks kept — surviving user breaks keep their footprint
+      // in the running position). Inserts go highest position first, seeded
       // with estimated heights (corrected exactly right after dispatch).
       let running = 0;
       const posBeforeContent: Record<number, number> = {};
       let ck = 0;
       for (let i = 0; i < doc.childCount; i++) {
         const node = doc.child(i);
-        if (node.type.name === 'pageBreak') continue;
+        if (node.type.name === 'pageBreak') {
+          if (node.attrs.user) running += node.nodeSize;
+          continue;
+        }
         posBeforeContent[ck] = running;
         running += node.nodeSize;
         ck++;
@@ -527,7 +589,7 @@ export default function EditorPage() {
       for (const c of desired) {
         const p = posBeforeContent[c];
         if (typeof p === 'number') {
-          tr = tr.insert(p, schema.nodes.pageBreak.create({ h: desiredHeights.get(c) ?? baseSpacerPx }));
+          tr = tr.insert(p, schema.nodes.pageBreak.create({ h: desiredHeights.get(c) ?? baseSpacerPx, user: forced.has(c) }));
         }
       }
       if (tr.docChanged) {
@@ -539,7 +601,7 @@ export default function EditorPage() {
         const freshKids = Array.from((editor.view.dom as HTMLElement).children) as HTMLElement[];
         const refit = [...measureFitted(fresh.doc, freshKids).values()]
           .filter((f) => Math.abs(f.need - f.cur) > 0.75)
-          .map((f) => ({ pos: f.pos, h: f.need }));
+          .map((f) => ({ pos: f.pos, h: f.need, attrs: f.attrs }));
         dispatchHeights(refit);
       }
       return;
@@ -548,7 +610,7 @@ export default function EditorPage() {
     // Breaks unchanged — nudge stale spacer heights only (no history entry).
     const tweaks = [...fitted.entries()]
       .filter(([c, f]) => Math.abs(f.need - (currentBreaks.get(c) ?? f.cur)) > 0.75)
-      .map(([, f]) => ({ pos: f.pos, h: f.need }));
+      .map(([, f]) => ({ pos: f.pos, h: f.need, attrs: f.attrs }));
     dispatchHeights(tweaks);
   }, [setPageCount, rebuildPrintSnapshot]);
 
@@ -839,6 +901,9 @@ export default function EditorPage() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         flush();
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        setFindOpen(true);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -898,6 +963,18 @@ export default function EditorPage() {
       const next = !prev;
       try {
         window.localStorage.setItem('bdoc-ruler', String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleStatusBar = useCallback(() => {
+    setShowStatusBar((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem('bdoc-statusbar', String(next));
       } catch {
         /* ignore */
       }
@@ -1020,6 +1097,11 @@ export default function EditorPage() {
       onEditHeaderFooter={() => setHfDialogOpen(true)}
       showRuler={showRuler}
       onToggleRuler={handleToggleRuler}
+      showStatusBar={showStatusBar}
+      onToggleStatusBar={handleToggleStatusBar}
+      onFindReplace={() => setFindOpen(true)}
+      onWordCount={() => setWordCountOpen(true)}
+      onHelp={() => setHelpOpen(true)}
       title={title}
       onTitleChange={handleTitleChange}
       titleStatus={
@@ -1142,11 +1224,13 @@ export default function EditorPage() {
         </div>
 
         {/* Word-like status bar — pinned, always visible */}
-        <div className="editor-statusbar no-print z-40 flex shrink-0 items-center gap-4 px-5">
-          <span>Page {Math.min(currentPage, pageCount)} of {pageCount}</span>
-          <span>{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
-          <span className="ml-auto">Print Layout · {Math.round(zoom * 100)}%</span>
-        </div>
+        {showStatusBar && (
+          <div className="editor-statusbar no-print z-40 flex shrink-0 items-center gap-4 px-5">
+            <span>Page {Math.min(currentPage, pageCount)} of {pageCount}</span>
+            <span>{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
+            <span className="ml-auto">Print Layout · {Math.round(zoom * 100)}%</span>
+          </div>
+        )}
       </div>
       {hfDialogOpen && (
         <HeaderFooterDialog
@@ -1155,6 +1239,13 @@ export default function EditorPage() {
           onClose={() => setHfDialogOpen(false)}
         />
       )}
+      {findOpen && editor && (
+        <FindReplaceDialog editor={editor} onClose={() => setFindOpen(false)} />
+      )}
+      {wordCountOpen && editor && (
+        <WordCountDialog editor={editor} pageCount={pageCount} onClose={() => setWordCountOpen(false)} />
+      )}
+      {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
     </AppLayout>
   );
 }

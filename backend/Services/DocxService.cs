@@ -60,7 +60,14 @@ public static class DocxService
             var mainPart = wordDoc.AddMainDocumentPart();
             var converter = new HtmlConverter(mainPart);
             converter.ImageProcessing = ImageProcessingMode.Embed;
-            await converter.ParseBody(string.IsNullOrWhiteSpace(html) ? "<p></p>" : html);
+            // User-inserted page breaks become real Word page breaks (an empty
+            // paragraph carrying page-break-after survives conversion cleanly).
+            var bodyHtml = Regex.Replace(
+                string.IsNullOrWhiteSpace(html) ? "<p></p>" : html,
+                @"<div\b[^>]*\bdata-user-break\s*=\s*(""true""|'true')[^>]*>.*?</div>",
+                "<p style=\"page-break-after: always;\"></p>",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            await converter.ParseBody(bodyHtml);
             ApplyPageSettings(mainPart, settingsJson);
             mainPart.Document!.Save();
         }

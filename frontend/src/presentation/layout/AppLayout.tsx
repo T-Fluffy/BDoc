@@ -23,6 +23,11 @@ interface AppLayoutProps {
   onEditHeaderFooter?: () => void;
   showRuler?: boolean;
   onToggleRuler?: () => void;
+  showStatusBar?: boolean;
+  onToggleStatusBar?: () => void;
+  onFindReplace?: () => void;
+  onWordCount?: () => void;
+  onHelp?: () => void;
   title?: string;
   onTitleChange?: (value: string) => void;
   titleStatus?: ReactNode;
@@ -45,6 +50,11 @@ export default function AppLayout({
   onEditHeaderFooter,
   showRuler,
   onToggleRuler,
+  showStatusBar,
+  onToggleStatusBar,
+  onFindReplace,
+  onWordCount,
+  onHelp,
   title,
   onTitleChange,
   titleStatus,
@@ -74,6 +84,11 @@ export default function AppLayout({
         onEditHeaderFooter={onEditHeaderFooter}
         showRuler={showRuler}
         onToggleRuler={onToggleRuler}
+        showStatusBar={showStatusBar}
+        onToggleStatusBar={onToggleStatusBar}
+        onFindReplace={onFindReplace}
+        onWordCount={onWordCount}
+        onHelp={onHelp}
         title={title}
         onTitleChange={onTitleChange}
         titleStatus={titleStatus}
