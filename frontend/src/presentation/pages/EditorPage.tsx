@@ -87,20 +87,29 @@ const blockSpacingAttrs = () => ({
 const ParagraphSpacing = Paragraph.extend({ addAttributes: blockSpacingAttrs });
 const HeadingSpacing = Heading.extend({ addAttributes: blockSpacingAttrs });
 
-// Invisible spacer node that marks a page boundary (keeps content from spilling
-// into the gap/margins between sheets). Height is driven by --page-gap so it
-// matches the on-screen sheet geometry.
+// Invisible spacer node that marks a page boundary. Its height is fitted per
+// page (stored in the `h` attr, unscaled px) so following content lands exactly
+// on the next sheet even when a page under-fills — fixed heights drift.
 const PageBreak = Node.create({
   name: 'pageBreak',
   group: 'block',
   atom: true,
   selectable: false,
   draggable: false,
-  parseHTML() {
-    return [{ tag: 'div.page-break' }];
+  addAttributes() {
+    return {
+      h: { default: 0 },
+    };
   },
-  renderHTML() {
-    return ['div', { class: 'page-break', 'data-page-break': 'true' }];
+  parseHTML() {
+    return [{
+      tag: 'div.page-break',
+      getAttrs: (dom) => ({ h: parseFloat((dom as HTMLElement).style.height) || 0 }),
+    }];
+  },
+  renderHTML({ node }) {
+    const h = typeof node.attrs.h === 'number' ? node.attrs.h : 0;
+    return ['div', { class: 'page-break', 'data-page-break': 'true', style: `height: ${h}px` }];
   },
 });
 
@@ -246,29 +255,49 @@ export default function EditorPage() {
       return;
     }
 
-    // Measure every content block's height, then compute the ideal page breaks
-    // with a greedy packer. This depends ONLY on block heights (not on where
-    // breaks currently are), so it is idempotent: re-running after breaks are
-    // inserted yields the same result — no oscillation / runaway page creation.
-    const heights: number[] = [];
+    // Measure every content block, then compute the ideal page breaks with a
+    // greedy packer. Heights are flow ADVANCES (margin-collapse-correct:
+    // adjoining vertical margins collapse to their max, not sum — naive
+    // rect+margins over-estimates around headings/tables and lands breaks
+    // early). Packing only decides break positions; exact sheet alignment is
+    // enforced by per-spacer fitted heights below, so packing just needs to
+    // avoid overflow. Re-running after insertion yields identical results —
+    // no oscillation / runaway page creation.
+    const z = zoomRef.current || 1;
+    const rects: { h: number; mt: number; mb: number }[] = [];
     const kinds: string[] = [];
     for (let i = 0; i < doc.childCount; i++) {
       const node = doc.child(i);
       if (node.type.name === 'pageBreak') continue; // spacer, not content
       const el = domChildren[i];
       let h = 0;
+      let mt = 0;
+      let mb = 0;
       if (el) {
         const r = el.getBoundingClientRect();
         const cs = getComputedStyle(el);
         // getBoundingClientRect is in scaled (visual) px — convert back to
         // unscaled layout px so breaks stay correct at any zoom level.
-        const z = zoomRef.current || 1;
-        h = r.height / z + parseFloat(cs.marginTop || '0') + parseFloat(cs.marginBottom || '0');
+        h = r.height / z;
+        mt = parseFloat(cs.marginTop || '0');
+        mb = parseFloat(cs.marginBottom || '0');
       }
-      heights.push(h);
+      rects.push({ h, mt, mb });
       kinds.push(node.type.name);
     }
+    // Advance from block i's top to block i+1's top. The last block is
+    // approximated (rect + margin) — nothing below it can misalign.
+    const heights: number[] = rects.map((r, i) => {
+      const nextMt = i + 1 < rects.length ? rects[i + 1].mt : 0;
+      return r.h + Math.max(r.mb, nextMt);
+    });
+    if (rects.length > 0) heights[0] += Math.max(0, rects[0].mt);
+    const unitPx = (pageH + GAP_MM) * PX_PER_MM;
+    const baseSpacerPx = (2 * pageM + GAP_MM) * PX_PER_MM;
     const desiredBreaks = new Set<number>();
+    // Estimated spacer height per break: exact when the page sum is exact
+    // (unitPx - pageSum); falls back to the fixed spacer on overflow pages.
+    const desiredHeights = new Map<number, number>();
     let used = 0;
     let pageStart = 0;
     for (let i = 0; i < heights.length; i++) {
@@ -286,6 +315,8 @@ export default function EditorPage() {
           desiredBreaks.add(b);
           let nu = 0;
           for (let k = b; k < i; k++) nu += heights[k];
+          const closedSum = used - nu;
+          desiredHeights.set(b, closedSum > innerPx ? baseSpacerPx : unitPx - closedSum);
           used = nu;
           pageStart = b;
         }
@@ -296,21 +327,20 @@ export default function EditorPage() {
     // Mirror the computed breaks for caret→page mapping (ref: no re-render).
     breaksRef.current = Array.from(desiredBreaks).sort((a, b) => a - b);
 
-    // Current leading breaks expressed as content indices.
-    const currentBreaks = new Set<number>();
+    // Current breaks: content indices + fitted spacer heights.
+    const currentBreaks = new Map<number, number>();
     let cj = 0;
     for (let i = 0; i < doc.childCount; i++) {
       const node = doc.child(i);
       if (node.type.name === 'pageBreak') {
-        currentBreaks.add(cj);
+        const h = typeof node.attrs.h === 'number' ? (node.attrs.h as number) : baseSpacerPx;
+        currentBreaks.set(cj, h);
         continue;
       }
       cj++;
     }
-    // Idempotent check: if the desired breaks are the same as the current ones
-    // (and no table needs splitting below), there is nothing to do — skip
-    // dispatch and setPageCount to avoid a loop.
-    const same = currentBreaks.size === desiredBreaks.size && [...currentBreaks].every((c) => desiredBreaks.has(c));
+    const sameIndices =
+      currentBreaks.size === desiredBreaks.size && [...desiredBreaks].every((c) => currentBreaks.has(c));
 
     // Guard: skip pagination dispatch if user is composing (IME) or if we dispatched
     // too recently (prevents rapid re-dispatch loops that can interfere with typing).
@@ -367,7 +397,7 @@ export default function EditorPage() {
         }
         const t1 = schema.nodes.table.create(node.attrs, rows1);
         const t2 = schema.nodes.table.create(node.attrs, rows2);
-        splits.push({ pos: start, end: start + node.nodeSize, nodes: [t1, schema.nodes.pageBreak.create(), t2] });
+        splits.push({ pos: start, end: start + node.nodeSize, nodes: [t1, schema.nodes.pageBreak.create({ h: baseSpacerPx }), t2] });
       }
       if (splits.length > 0) {
         let str = editor.state.tr;
@@ -382,55 +412,143 @@ export default function EditorPage() {
         return;
       }
     }
-    if (same) return;
+    // Exact spacer fitting: measure what each spacer's height MUST be so the
+    // following content lands exactly on the next sheet top. Feed-forward —
+    // spacer heights never affect widths, wrapping, or anything above them —
+    // so this converges and can never accumulate drift: every page aligns
+    // from live measurement regardless of upstream error. Top-down single
+    // pass: corrections decided for spacers above are folded in, making the
+    // whole stack exact in one dispatch (no ripple across passes).
+    // Pure function of (doc state, live DOM children).
+    const measureFitted = (
+      stateDoc: typeof doc,
+      kids: HTMLElement[],
+    ): Map<number, { pos: number; cur: number; need: number }> => {
+      const out = new Map<number, { pos: number; cur: number; need: number }>();
+      if (kids.length !== stateDoc.childCount) return out;
+      const pm2 = editor.view.dom as HTMLElement;
+      const z2 = zoomRef.current || 1;
+      const pmTop = pm2.getBoundingClientRect().top;
+      let sk = -1;
+      let prevBottom: number | null = null;
+      let prevMb = 0;
+      let aboveCorr = 0; // Σ(new-old) of spacers already decided above
+      let cj2 = 0;
+      let pp = 0;
+      kids.forEach((el, i) => {
+        const node = stateDoc.child(i);
+        const start = pp;
+        pp += node.nodeSize;
+        if (node.type.name === 'pageBreak') {
+          sk++;
+          if (prevBottom !== null) {
+            const hAttr = node.attrs.h;
+            const cur = typeof hAttr === 'number' ? hAttr : baseSpacerPx;
+            // Target: next sheet's content top, rel pm top (pads cancel).
+            // prevBottom measured in current layout; aboveCorr folds in the
+            // shifts our own decided corrections will cause below.
+            const need = Math.max(1, (sk + 1) * unitPx - (prevBottom + prevMb) - aboveCorr);
+            out.set(cj2, { pos: start, cur, need });
+            aboveCorr += need - cur;
+          }
+          return;
+        }
+        const r = el.getBoundingClientRect();
+        prevBottom = (r.bottom - pmTop) / z2;
+        prevMb = parseFloat(getComputedStyle(el).marginBottom || '0');
+        cj2++;
+      });
+      return out;
+    };
 
-    // The number of pages is exactly (breaks + 1); drive the sheet stack from this
-    // instead of a scrollHeight measurement (which was off by one).
-    setPageCount((prev) => {
-      const next = desiredBreaks.size + 1;
-      return prev === next ? prev : next;
-    });
+    const fitted = measureFitted(doc, domChildren);
+    const FIT_TOL = 1; // steady-state tolerance: below this, consider aligned
+    const sameHeights =
+      fitted.size === currentBreaks.size &&
+      [...currentBreaks.keys()].every(
+        (c) => fitted.has(c) && Math.abs((fitted.get(c)?.need ?? 0) - (currentBreaks.get(c) ?? 0)) <= FIT_TOL,
+      );
+    if (sameIndices && sameHeights) return;
 
-    // Remove all existing page breaks (last to first so positions stay valid).
-    // Top-level doc content is indexed from 0 (the doc's own tokens are not
-    // counted), so the first child starts at position 0.
-    let tr = editor.state.tr;
-    let pos = 0;
-    const delPos: number[] = [];
-    for (let i = 0; i < doc.childCount; i++) {
-      const before = pos;
-      const node = doc.child(i);
-      if (node.type.name === 'pageBreak') delPos.push(before);
-      pos += node.nodeSize;
-    }
-    for (let k = delPos.length - 1; k >= 0; k--) {
-      tr = tr.delete(delPos[k], delPos[k] + 1);
-    }
-
-    // Position before each content node (in the now break-free doc), then insert
-    // the desired breaks from highest position to lowest.
-    let running = 0;
-    const posBeforeContent: Record<number, number> = {};
-    let ck = 0;
-    for (let i = 0; i < doc.childCount; i++) {
-      const node = doc.child(i);
-      if (node.type.name === 'pageBreak') continue;
-      posBeforeContent[ck] = running;
-      running += node.nodeSize;
-      ck++;
-    }
-    const desired = Array.from(desiredBreaks).sort((a, b) => b - a);
-    for (const c of desired) {
-      const p = posBeforeContent[c];
-      if (typeof p === 'number') {
-        tr = tr.insert(p, schema.nodes.pageBreak.create());
+    const dispatchHeights = (entries: { pos: number; h: number }[]) => {
+      if (entries.length === 0) return false;
+      const trx = editor.state.tr;
+      trx.setMeta('addToHistory', false);
+      for (const e of entries.sort((a, b) => b.pos - a.pos)) {
+        trx.setNodeMarkup(e.pos, undefined, { h: e.h });
       }
-    }
-    if (tr.docChanged) {
+      if (!trx.docChanged) return false;
       lastPaginateDispatchRef.current = Date.now();
-      editor.view.dispatch(tr);
+      editor.view.dispatch(trx);
       rebuildPrintSnapshot();
+      return true;
+    };
+
+    if (!sameIndices) {
+      // Structural change: rebuild all breaks (history), then fit exactly.
+      // The number of pages is exactly (breaks + 1); drive the sheet stack
+      // from this instead of a scrollHeight measurement (off by one).
+      setPageCount((prev) => {
+        const next = desiredBreaks.size + 1;
+        return prev === next ? prev : next;
+      });
+
+      // Remove all existing page breaks (last to first so positions stay valid).
+      // Top-level doc content is indexed from 0 (the doc's own tokens are not
+      // counted), so the first child starts at position 0.
+      let tr = editor.state.tr;
+      let pos = 0;
+      const delPos: number[] = [];
+      for (let i = 0; i < doc.childCount; i++) {
+        const before = pos;
+        const node = doc.child(i);
+        if (node.type.name === 'pageBreak') delPos.push(before);
+        pos += node.nodeSize;
+      }
+      for (let k = delPos.length - 1; k >= 0; k--) {
+        tr = tr.delete(delPos[k], delPos[k] + 1);
+      }
+
+      // Position before each content node (in the now break-free doc), then
+      // insert the desired breaks from highest position to lowest, seeded
+      // with estimated heights (corrected exactly right after dispatch).
+      let running = 0;
+      const posBeforeContent: Record<number, number> = {};
+      let ck = 0;
+      for (let i = 0; i < doc.childCount; i++) {
+        const node = doc.child(i);
+        if (node.type.name === 'pageBreak') continue;
+        posBeforeContent[ck] = running;
+        running += node.nodeSize;
+        ck++;
+      }
+      const desired = Array.from(desiredBreaks).sort((a, b) => b - a);
+      for (const c of desired) {
+        const p = posBeforeContent[c];
+        if (typeof p === 'number') {
+          tr = tr.insert(p, schema.nodes.pageBreak.create({ h: desiredHeights.get(c) ?? baseSpacerPx }));
+        }
+      }
+      if (tr.docChanged) {
+        lastPaginateDispatchRef.current = Date.now();
+        editor.view.dispatch(tr);
+        rebuildPrintSnapshot();
+        // Immediately fit exactly (fresh DOM is synchronous post-dispatch).
+        const fresh = editor.state;
+        const freshKids = Array.from((editor.view.dom as HTMLElement).children) as HTMLElement[];
+        const refit = [...measureFitted(fresh.doc, freshKids).values()]
+          .filter((f) => Math.abs(f.need - f.cur) > 0.75)
+          .map((f) => ({ pos: f.pos, h: f.need }));
+        dispatchHeights(refit);
+      }
+      return;
     }
+
+    // Breaks unchanged — nudge stale spacer heights only (no history entry).
+    const tweaks = [...fitted.entries()]
+      .filter(([c, f]) => Math.abs(f.need - (currentBreaks.get(c) ?? f.cur)) > 0.75)
+      .map(([, f]) => ({ pos: f.pos, h: f.need }));
+    dispatchHeights(tweaks);
   }, [setPageCount, rebuildPrintSnapshot]);
 
   const paginateTimer = useRef<number | null>(null);
@@ -521,6 +639,48 @@ export default function EditorPage() {
     window.addEventListener('beforeprint', onBeforePrint);
     return () => window.removeEventListener('beforeprint', onBeforePrint);
   }, [rebuildPrintSnapshot]);
+
+  // Re-paginate when async resources settle: fonts, full page load, and
+  // images change block heights without firing any editor transaction.
+  useEffect(() => {
+    let cancelled = false;
+    const kick = () => {
+      if (!cancelled) schedulePaginate();
+    };
+    try {
+      const wdoc = window.document as unknown as { fonts?: { ready?: Promise<unknown> } };
+      wdoc.fonts?.ready?.then(kick).catch(() => undefined);
+    } catch {
+      /* font API unavailable — ignore */
+    }
+    window.addEventListener('load', kick);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('load', kick);
+    };
+  }, [schedulePaginate]);
+
+  // Watch for late-loading images inside the editor and re-paginate once
+  // each finishes (their heights change the page flow).
+  useEffect(() => {
+    if (!editor) return;
+    const pm = editor.view.dom as HTMLElement;
+    const attach = (img: HTMLImageElement) => {
+      if (img.complete) return;
+      img.addEventListener('load', schedulePaginate, { once: true });
+    };
+    pm.querySelectorAll('img').forEach(attach);
+    const mo = new MutationObserver((muts) => {
+      for (const m of muts) {
+        m.addedNodes.forEach((n) => {
+          if (n instanceof HTMLImageElement) attach(n);
+          else if (n instanceof HTMLElement) n.querySelectorAll('img').forEach(attach);
+        });
+      }
+    });
+    mo.observe(pm, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, [editor, schedulePaginate]);
 
   const docRef = useRef<Document | null>(null);
   const titleRef = useRef(title);
