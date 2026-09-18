@@ -23,6 +23,9 @@ interface AppLayoutProps {
   onEditHeaderFooter?: () => void;
   showRuler?: boolean;
   onToggleRuler?: () => void;
+  title?: string;
+  onTitleChange?: (value: string) => void;
+  titleStatus?: ReactNode;
 }
 
 export default function AppLayout({
@@ -42,6 +45,9 @@ export default function AppLayout({
   onEditHeaderFooter,
   showRuler,
   onToggleRuler,
+  title,
+  onTitleChange,
+  titleStatus,
 }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -68,6 +74,9 @@ export default function AppLayout({
         onEditHeaderFooter={onEditHeaderFooter}
         showRuler={showRuler}
         onToggleRuler={onToggleRuler}
+        title={title}
+        onTitleChange={onTitleChange}
+        titleStatus={titleStatus}
       />
 
       <div className="flex-1 flex min-h-0">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
@@ -45,6 +45,9 @@ interface NavbarProps {
   onEditHeaderFooter?: () => void;
   showRuler?: boolean;
   onToggleRuler?: () => void;
+  title?: string;
+  onTitleChange?: (value: string) => void;
+  titleStatus?: ReactNode;
 }
 
 export default function NavbarComponent({
@@ -65,6 +68,9 @@ export default function NavbarComponent({
   onEditHeaderFooter,
   showRuler,
   onToggleRuler,
+  title,
+  onTitleChange,
+  titleStatus,
 }: NavbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -112,51 +118,142 @@ export default function NavbarComponent({
     navigate('/login');
   };
 
+  // Docs-style text menu button (shared by the menu row).
+  const menuBtn = (active: boolean) =>
+    `px-2 py-1 rounded-md text-sm whitespace-nowrap transition-colors ${
+      active ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:text-ink hover:bg-soft'
+    }`;
+
   return (
-    <nav className="h-14 shrink-0 bg-canvas/80 backdrop-blur-xl border-b border-[var(--border)] px-4 flex items-center justify-between relative z-[100] no-print">
-      <div className="flex items-center gap-2">
-        {isEditing && (
+    <nav className="shrink-0 bg-canvas/80 backdrop-blur-xl border-b border-[var(--border)] px-4 pt-2 pb-1.5 relative z-[100] no-print">
+      {/* Row 1: app controls — icon, inline title, settings */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {isEditing && (
+            <button
+              onClick={onToggleSidebar}
+              className="lg:hidden p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-soft transition-colors shrink-0"
+              aria-label="Toggle sidebar"
+            >
+              <FaBars />
+            </button>
+          )}
+
           <button
-            onClick={onToggleSidebar}
-            className="lg:hidden p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-soft transition-colors"
-            aria-label="Toggle sidebar"
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2.5 group shrink-0"
+            title="All documents"
           >
-            <FaBars />
+            <span className="w-7 h-7 bg-gradient-to-br from-accent to-violet-500 rounded-lg shadow-[0_0_20px_var(--accent-soft)] group-hover:scale-110 transition-transform flex items-center justify-center">
+              <FaFileAlt size={13} className="text-accent-contrast" />
+            </span>
+            {!isEditing && (
+              <span className="font-bold tracking-[0.2em] text-sm uppercase text-ink">BDoc</span>
+            )}
           </button>
-        )}
 
-        <button
-          onClick={() => navigate('/')}
-          className="flex items-center gap-2.5 group"
-        >
-          <span className="w-7 h-7 bg-gradient-to-br from-accent to-violet-500 rounded-lg shadow-[0_0_20px_var(--accent-soft)] group-hover:scale-110 transition-transform flex items-center justify-center">
-            <FaFileAlt size={13} className="text-accent-contrast" />
-          </span>
-          <span className="font-bold tracking-[0.2em] text-sm uppercase text-ink">BDoc</span>
-        </button>
+          {isEditing && title !== undefined && onTitleChange && (
+            <div className="min-w-0 flex-1 max-w-md">
+              <input
+                value={title}
+                onChange={(e) => onTitleChange(e.target.value)}
+                placeholder="Untitled document"
+                aria-label="Document title"
+                spellCheck={false}
+                className="w-full bg-transparent text-lg font-medium text-ink placeholder:text-ink-faint rounded px-1 -mx-1 border border-transparent hover:border-[var(--border)] focus:border-[var(--border-strong)] focus:outline-none transition-colors truncate"
+              />
+              {titleStatus && (
+                <div className="text-[11px] leading-tight text-ink-faint truncate px-1">{titleStatus}</div>
+              )}
+            </div>
+          )}
+        </div>
 
-        <span className="h-5 w-px bg-[var(--border)] mx-2 hidden sm:block" />
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+            className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-soft transition-colors"
+            title="Toggle theme"
+          >
+            {mode === 'dark' ? <FaSun /> : <FaMoon />}
+          </button>
 
+          <button
+            onClick={onOpenSettings}
+            className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-soft transition-colors"
+            title="Settings"
+          >
+            <FaCog />
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setMenu(menu === 'user' ? null : 'user')}
+              className="ml-1 p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-soft transition-colors text-xl"
+              title="Account"
+            >
+              <FaUserCircle />
+            </button>
+
+            {menu === 'user' && (
+              <div className="absolute right-0 mt-2 w-52 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150">
+                <div className="px-4 py-3 border-b border-[var(--border)]">
+                  <p className="text-[10px] text-ink-faint uppercase tracking-widest text-center">
+                    Account
+                  </p>
+                  <p className="text-sm font-medium text-ink text-center truncate">user@bdoc.app</p>
+                </div>
+                <div className="p-1.5">
+                  <button
+                    onClick={() => {
+                      navigate('/');
+                      setMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-ink-muted hover:text-ink hover:bg-soft transition-colors"
+                  >
+                    <FaFileAlt className="text-accent" />
+                    Library
+                  </button>
+                  <button
+                    onClick={() => {
+                      onOpenSettings();
+                      setMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-ink-muted hover:text-ink hover:bg-soft transition-colors"
+                  >
+                    <FaCog className="text-accent" />
+                    Settings
+                  </button>
+                  <div className="my-1 border-t border-[var(--border)]" />
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-danger hover:bg-danger-soft transition-colors"
+                  >
+                    <FaSignOutAlt />
+                    Log Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: Docs-style text menu row */}
+      <div className="flex items-center gap-0.5 mt-0.5 overflow-x-auto">
         {isEditing && (
           <button
             onClick={() => navigate('/')}
-            className="text-sm text-ink-muted hover:text-ink transition-colors hidden sm:block"
+            className="px-2 py-1 rounded-md text-sm whitespace-nowrap text-ink-muted hover:text-ink hover:bg-soft transition-colors hidden sm:block"
           >
             All documents
           </button>
         )}
 
         <div className="relative">
-            <button
-              onClick={() => setMenu(menu === 'file' ? null : 'file')}
-              className={`ml-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all border ${
-                menu === 'file'
-                  ? 'bg-accent-soft text-accent border-[var(--border-strong)]'
-                  : 'bg-soft/60 text-ink-muted hover:text-ink border-[var(--border)]'
-              }`}
-            >
-              File
-            </button>
+          <button onClick={() => setMenu(menu === 'file' ? null : 'file')} className={menuBtn(menu === 'file')}>
+            File
+          </button>
 
             {menu === 'file' && (
               <>
@@ -187,14 +284,7 @@ export default function NavbarComponent({
 
         {isEditing && pageSettings && (
           <div className="relative">
-            <button
-              onClick={() => setMenu(menu === 'page' ? null : 'page')}
-              className={`ml-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all border ${
-                menu === 'page'
-                  ? 'bg-accent-soft text-accent border-[var(--border-strong)]'
-                  : 'bg-soft/60 text-ink-muted hover:text-ink border-[var(--border)]'
-              }`}
-            >
+            <button onClick={() => setMenu(menu === 'page' ? null : 'page')} className={menuBtn(menu === 'page')}>
               Page
             </button>
 
@@ -272,14 +362,7 @@ export default function NavbarComponent({
 
         {isEditing && zoom !== undefined && onZoomChange && (
           <div className="relative">
-            <button
-              onClick={() => setMenu(menu === 'zoom' ? null : 'zoom')}
-              className={`ml-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all border ${
-                menu === 'zoom'
-                  ? 'bg-accent-soft text-accent border-[var(--border-strong)]'
-                  : 'bg-soft/60 text-ink-muted hover:text-ink border-[var(--border)]'
-              }`}
-            >
+            <button onClick={() => setMenu(menu === 'zoom' ? null : 'zoom')} className={menuBtn(menu === 'zoom')}>
               {Math.round(zoom * 100)}%
             </button>
 
@@ -311,14 +394,7 @@ export default function NavbarComponent({
 
         {isEditing && (
           <div className="relative">
-            <button
-              onClick={() => setMenu(menu === 'insert' ? null : 'insert')}
-              className={`ml-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all border ${
-                menu === 'insert'
-                  ? 'bg-accent-soft text-accent border-[var(--border-strong)]'
-                  : 'bg-soft/60 text-ink-muted hover:text-ink border-[var(--border)]'
-              }`}
-            >
+            <button onClick={() => setMenu(menu === 'insert' ? null : 'insert')} className={menuBtn(menu === 'insert')}>
               Insert
             </button>
 
@@ -343,75 +419,6 @@ export default function NavbarComponent({
             )}
           </div>
         )}
-      </div>
-
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
-          className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-soft transition-colors"
-          title="Toggle theme"
-        >
-          {mode === 'dark' ? <FaSun /> : <FaMoon />}
-        </button>
-
-        <button
-          onClick={onOpenSettings}
-          className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-soft transition-colors"
-          title="Settings"
-        >
-          <FaCog />
-        </button>
-
-        <div className="relative">
-          <button
-            onClick={() => setMenu(menu === 'user' ? null : 'user')}
-            className="ml-1 p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-soft transition-colors text-xl"
-            title="Account"
-          >
-            <FaUserCircle />
-          </button>
-
-          {menu === 'user' && (
-            <div className="absolute right-0 mt-2 w-52 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150">
-              <div className="px-4 py-3 border-b border-[var(--border)]">
-                <p className="text-[10px] text-ink-faint uppercase tracking-widest text-center">
-                  Account
-                </p>
-                <p className="text-sm font-medium text-ink text-center truncate">user@bdoc.app</p>
-              </div>
-              <div className="p-1.5">
-                <button
-                  onClick={() => {
-                    navigate('/');
-                    setMenu(null);
-                  }}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-ink-muted hover:text-ink hover:bg-soft transition-colors"
-                >
-                  <FaFileAlt className="text-accent" />
-                  Library
-                </button>
-                <button
-                  onClick={() => {
-                    onOpenSettings();
-                    setMenu(null);
-                  }}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-ink-muted hover:text-ink hover:bg-soft transition-colors"
-                >
-                  <FaCog className="text-accent" />
-                  Settings
-                </button>
-                <div className="my-1 border-t border-[var(--border)]" />
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-lg text-sm text-danger hover:bg-danger-soft transition-colors"
-                >
-                  <FaSignOutAlt />
-                  Log Out
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
     </nav>
   );

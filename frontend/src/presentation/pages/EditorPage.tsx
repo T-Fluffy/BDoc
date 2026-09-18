@@ -1020,33 +1020,25 @@ export default function EditorPage() {
       onEditHeaderFooter={() => setHfDialogOpen(true)}
       showRuler={showRuler}
       onToggleRuler={handleToggleRuler}
+      title={title}
+      onTitleChange={handleTitleChange}
+      titleStatus={
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`w-1.5 h-1.5 rounded-full ${saveStatus === 'dirty' ? 'bg-amber-400' : saveStatus === 'saving' ? 'bg-accent' : saveStatus === 'saved' ? 'bg-success' : 'bg-ink-faint'}`} />
+          {statusLabel}
+        </span>
+      }
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+        onChange={handleImport}
+      />
       <div className="editor-workspace flex h-full min-h-full flex-col overflow-hidden">
         <div className="bdoc-scroll min-h-0 flex-1 overflow-auto pb-16">
         <div className="mx-auto flex flex-col items-stretch" style={{ width: `${pageW}mm` }}>
-          {/* Document header */}
-          <div className="px-6 pt-8 no-print">
-            <div className="flex items-center gap-3 mb-2">
-              <input
-                value={title}
-                onChange={(e) => handleTitleChange(e.target.value)}
-                placeholder="Untitled"
-                className="flex-1 bg-transparent text-3xl font-bold text-ink placeholder:text-ink-faint focus:outline-none"
-              />
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              className="hidden"
-              onChange={handleImport}
-            />
-            <div className="flex items-center gap-2 text-xs text-ink-faint mb-4">
-              <span className={`w-1.5 h-1.5 rounded-full ${saveStatus === 'dirty' ? 'bg-amber-400' : saveStatus === 'saving' ? 'bg-accent' : saveStatus === 'saved' ? 'bg-success' : 'bg-ink-faint'}`} />
-              {statusLabel}
-            </div>
-          </div>
-
           {/* Toolbar */}
           <div className="sticky top-0 z-50 px-4 pt-2 pb-4 bg-gradient-to-b from-workspace via-workspace/95 to-transparent no-print">
             <Toolbar editor={editor} />
