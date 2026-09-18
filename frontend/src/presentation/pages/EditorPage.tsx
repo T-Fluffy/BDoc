@@ -47,6 +47,7 @@ import {
 const TextStyleExt = TextStyle.extend({
   addAttributes() {
     return {
+      ...this.parent?.(),
       fontSize: {
         default: null,
         parseHTML: (element) => element.style.fontSize || null,
@@ -92,8 +93,18 @@ const blockSpacingAttrs = () => ({
   },
 });
 
-const ParagraphSpacing = Paragraph.extend({ addAttributes: blockSpacingAttrs });
-const HeadingSpacing = Heading.extend({ addAttributes: blockSpacingAttrs });
+const ParagraphSpacing = Paragraph.extend({
+  addAttributes() {
+    return { ...this.parent?.(), ...blockSpacingAttrs() };
+  },
+});
+const HeadingSpacing = Heading.extend({
+  addAttributes() {
+    // NOTE: parent attrs (incl. heading `level`) must be spread — otherwise
+    // every heading silently renders as <h1>.
+    return { ...this.parent?.(), ...blockSpacingAttrs() };
+  },
+});
 
 // Invisible spacer node that marks a page boundary. Its height is fitted per
 // page (stored in the `h` attr, unscaled px) so following content lands exactly
@@ -1123,7 +1134,7 @@ export default function EditorPage() {
         <div className="mx-auto flex flex-col items-stretch" style={{ width: `${pageW}mm` }}>
           {/* Toolbar */}
           <div className="sticky top-0 z-50 px-4 pt-2 pb-4 bg-gradient-to-b from-workspace via-workspace/95 to-transparent no-print">
-            <Toolbar editor={editor} />
+            <Toolbar editor={editor} zoom={zoom} onZoomChange={handleZoomChange} onPrint={() => window.print()} />
             {showRuler && (
               <Ruler pageWidthMm={pageW} marginMm={pageM} onMarginChange={handleMarginChange} />
             )}

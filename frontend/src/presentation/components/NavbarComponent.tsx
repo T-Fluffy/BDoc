@@ -508,6 +508,8 @@ export default function NavbarComponent({
                   { key: 'strike', label: 'Strikethrough', checked: editor.isActive('strike'), action: () => { editor.chain().focus().toggleStrike().run(); closeMenu(); } },
                   { key: 'sup', label: 'Superscript', icon: <FaSuperscript />, checked: editor.isActive('superscript'), action: () => { editor.chain().focus().toggleSuperscript().run(); closeMenu(); } },
                   { key: 'sub', label: 'Subscript', icon: <FaSubscript />, checked: editor.isActive('subscript'), action: () => { editor.chain().focus().toggleSubscript().run(); closeMenu(); } },
+                  { key: 'code', label: 'Inline code', checked: editor.isActive('code'), action: () => { editor.chain().focus().toggleCode().run(); closeMenu(); } },
+                  { key: 'hl', label: 'Highlight', checked: editor.isActive('highlight'), action: () => { editor.chain().focus().toggleHighlight().run(); closeMenu(); } },
                 ],
               },
               {
