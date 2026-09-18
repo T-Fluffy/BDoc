@@ -448,6 +448,15 @@ export default function EditorPage() {
     }
     // Mirror the computed breaks for caret→page mapping (ref: no re-render).
     breaksRef.current = Array.from(desiredBreaks).sort((a, b) => a - b);
+    // Single source of truth: the sheet count ALWAYS mirrors the computed
+    // breaks — even on no-op passes. Without this, navigating from a long
+    // document to an empty one keeps the stale page count (both break sets
+    // are empty, so the idempotent check below returns early without ever
+    // resetting). Functional compare → no render loop.
+    setPageCount((prev) => {
+      const next = desiredBreaks.size + 1;
+      return prev === next ? prev : next;
+    });
 
     // Current breaks: content indices + fitted spacer heights.
     const currentBreaks = new Map<number, number>();
@@ -608,13 +617,6 @@ export default function EditorPage() {
 
     if (!sameIndices) {
       // Structural change: rebuild all breaks (history), then fit exactly.
-      // The number of pages is exactly (breaks + 1); drive the sheet stack
-      // from this instead of a scrollHeight measurement (off by one).
-      setPageCount((prev) => {
-        const next = desiredBreaks.size + 1;
-        return prev === next ? prev : next;
-      });
-
       // Remove all AUTO page breaks (last to first so positions stay valid).
       // User-inserted breaks are real content — never auto-removed (a leading
       // user break the packer can't place is left alone, harmlessly).
@@ -914,6 +916,11 @@ export default function EditorPage() {
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
+    // Fresh document → fresh pagination state immediately (before content
+    // loads and paginate runs). Otherwise a stale page count from the
+    // previously open document lingers on empty/new documents.
+    setPageCount(1);
+    setCurrentPage(1);
     getDocument(id)
       .then((doc) => {
         if (cancelled) return;
