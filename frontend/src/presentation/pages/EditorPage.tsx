@@ -1286,6 +1286,10 @@ export default function EditorPage() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !editor) return;
+    if (file.size > 5 * 1024 * 1024) {
+      window.alert('Image too large — please pick a file under 5 MB (try compressing it).');
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const src = reader.result as string;
@@ -1293,6 +1297,38 @@ export default function EditorPage() {
     };
     reader.readAsDataURL(file);
   };
+
+  // Drag-drop images directly onto the page (files → base64, same guard).
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom as HTMLElement;
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+    const onDrop = (e: DragEvent) => {
+      const file = e.dataTransfer?.files[0];
+      if (!file || !file.type.startsWith('image/')) return;
+      e.preventDefault();
+      if (file.size > 5 * 1024 * 1024) {
+        window.alert('Image too large — please pick a file under 5 MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        editor.chain().focus().setImage({ src: reader.result as string }).run();
+      };
+      reader.readAsDataURL(file);
+    };
+    dom.addEventListener('dragover', onDragOver);
+    dom.addEventListener('drop', onDrop);
+    return () => {
+      dom.removeEventListener('dragover', onDragOver);
+      dom.removeEventListener('drop', onDrop);
+    };
+  }, [editor]);
 
   const handleInsertToc = () => {
     if (!editor) return;

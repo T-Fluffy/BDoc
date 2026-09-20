@@ -1,6 +1,7 @@
 import { NodeViewWrapper } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { FaAlignCenter, FaAlignLeft, FaAlignRight } from 'react-icons/fa';
 
 const SIZES = ['25%', '50%', '75%', '100%'] as const;
 
@@ -28,6 +29,13 @@ export default function ResizableImageView({ node, updateAttributes, selected }:
     },
     [updateAttributes],
   );
+
+  const [altOpen, setAltOpen] = useState(false);
+  const [altDraft, setAltDraft] = useState('');
+  const openAlt = useCallback(() => {
+    setAltDraft((node.attrs.alt as string) ?? '');
+    setAltOpen(true);
+  }, [node.attrs.alt]);
 
   const onHandleDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -83,7 +91,7 @@ export default function ResizableImageView({ node, updateAttributes, selected }:
                   className={align === 'left' ? 'is-active' : ''}
                   onClick={() => setAlign(align === 'left' ? null : 'left')}
                 >
-                  L
+                  <FaAlignLeft size={12} />
                 </button>
                 <button
                   type="button"
@@ -91,7 +99,7 @@ export default function ResizableImageView({ node, updateAttributes, selected }:
                   className={!align || align === 'center' ? 'is-active' : ''}
                   onClick={() => setAlign('center')}
                 >
-                  C
+                  <FaAlignCenter size={12} />
                 </button>
                 <button
                   type="button"
@@ -99,7 +107,10 @@ export default function ResizableImageView({ node, updateAttributes, selected }:
                   className={align === 'right' ? 'is-active' : ''}
                   onClick={() => setAlign('right')}
                 >
-                  R
+                  <FaAlignRight size={12} />
+                </button>
+                <button type="button" title="Alt text" onClick={openAlt}>
+                  Alt
                 </button>
               </div>
               <div className="bdoc-image-bubble-row">
@@ -118,6 +129,32 @@ export default function ResizableImageView({ node, updateAttributes, selected }:
                   •
                 </button>
               </div>
+              {altOpen && (
+                <div className="bdoc-image-alt-row">
+                  <input
+                    autoFocus
+                    value={altDraft}
+                    onChange={(e) => setAltDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        updateAttributes({ alt: altDraft.trim() || null });
+                        setAltOpen(false);
+                      } else if (e.key === 'Escape') setAltOpen(false);
+                    }}
+                    placeholder="Alt text"
+                    className="bdoc-image-alt-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateAttributes({ alt: altDraft.trim() || null });
+                      setAltOpen(false);
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}

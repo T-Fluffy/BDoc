@@ -408,6 +408,23 @@
 }
 .bdoc-image-handle.left { left: -6px; }
 .bdoc-image-handle.right { right: -6px; }
+.bdoc-image-alt-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  width: 100%;
+}
+.bdoc-image-alt-input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
 .bdoc-image-bubble {
   position: absolute;
   left: 50%;
