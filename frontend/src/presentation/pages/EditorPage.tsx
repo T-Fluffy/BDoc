@@ -27,6 +27,7 @@ import { CommentMark } from '../components/CommentMark';
 import { FaSpinner } from 'react-icons/fa';
 import AppLayout from '../layout/AppLayout';
 import { Toolbar } from '../components/Toolbar';
+import VersionHistoryDialog from '../components/VersionHistoryDialog';
 import Ruler from '../components/Ruler';
 import HeaderFooterDialog from '../components/HeaderFooterDialog';
 import FindReplaceDialog from '../components/FindReplaceDialog';
@@ -302,6 +303,7 @@ export default function EditorPage() {
   const [findOpen, setFindOpen] = useState(false);
   const [wordCountOpen, setWordCountOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1502,6 +1504,7 @@ export default function EditorPage() {
       onFindReplace={() => setFindOpen(true)}
       onWordCount={() => setWordCountOpen(true)}
       onHelp={() => setHelpOpen(true)}
+      onVersionHistory={() => setVersionHistoryOpen(true)}
       onAddComment={handleAddComment}
       onInsertToc={handleInsertToc}
       title={title}
@@ -1658,6 +1661,26 @@ export default function EditorPage() {
         <WordCountDialog editor={editor} pageCount={pageCount} onClose={() => setWordCountOpen(false)} />
       )}
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
+      {versionHistoryOpen && id && (
+        <VersionHistoryDialog
+          docId={id}
+          onClose={() => setVersionHistoryOpen(false)}
+          onRestored={async () => {
+            try {
+              const fresh = await getDocument(id);
+              setDocument(fresh);
+              setTitle(fresh.title || 'Untitled');
+              const parsed = parsePageSettings(fresh.settings);
+              setPageSettings(parsed);
+              pageSettingsRef.current = parsed;
+              editor?.commands.setContent(fresh.content || '<p></p>');
+              window.setTimeout(schedulePaginate, 120);
+            } catch {
+              /* ignore */
+            }
+          }}
+        />
+      )}
       {tableMenu && editor && (
         <TableContextMenu
           editor={editor}

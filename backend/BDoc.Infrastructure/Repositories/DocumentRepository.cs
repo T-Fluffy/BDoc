@@ -28,9 +28,33 @@ public class DocumentRepository : IDocumentRepository
 
     public async Task UpdateAsync(Document document)
     {
+        var existing = await _context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == document.Id);
+        if (existing != null && (existing.Content != document.Content || existing.Title != document.Title || existing.Settings != document.Settings))
+        {
+            _context.DocumentVersions.Add(new DocumentVersion
+            {
+                DocumentId = existing.Id,
+                Title = existing.Title,
+                Content = existing.Content,
+                Settings = existing.Settings,
+                CreatedAt = existing.UpdatedAt,
+            });
+        }
         document.UpdatedAt = DateTime.UtcNow;
         _context.Documents.Update(document);
         await _context.SaveChangesAsync();
+        // Keep only last 50 versions per document.
+        var count = await _context.DocumentVersions.CountAsync(v => v.DocumentId == document.Id);
+        if (count > 50)
+        {
+            var toDelete = await _context.DocumentVersions
+                .Where(v => v.DocumentId == document.Id)
+                .OrderBy(v => v.CreatedAt)
+                .Take(count - 50)
+                .ToListAsync();
+            _context.DocumentVersions.RemoveRange(toDelete);
+            await _context.SaveChangesAsync();
+        }
     }
 
     public async Task DeleteAsync(Guid id)
@@ -41,5 +65,21 @@ public class DocumentRepository : IDocumentRepository
             _context.Documents.Remove(doc);
             await _context.SaveChangesAsync();
         }
+    }
+
+    public async Task<IEnumerable<DocumentVersion>> GetVersionsAsync(Guid documentId) =>
+        await _context.DocumentVersions
+            .Where(v => v.DocumentId == documentId)
+            .OrderByDescending(v => v.CreatedAt)
+            .ToListAsync();
+
+    public async Task<DocumentVersion?> GetVersionAsync(Guid documentId, Guid versionId) =>
+        await _context.DocumentVersions.FirstOrDefaultAsync(v => v.DocumentId == documentId && v.Id == versionId);
+
+    public async Task<DocumentVersion> CreateVersionAsync(DocumentVersion version)
+    {
+        _context.DocumentVersions.Add(version);
+        await _context.SaveChangesAsync();
+        return version;
     }
 }

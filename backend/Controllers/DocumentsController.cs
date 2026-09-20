@@ -74,4 +74,30 @@ public class DocumentsController : ControllerBase
         var result = DocxToHtmlService.ConvertWithSettings(ms.ToArray());
         return Ok(new { html = result.Html, settings = result.SettingsJson });
     }
+
+    [HttpGet("{id}/versions")]
+    public async Task<IActionResult> GetVersions(Guid id) =>
+        Ok(await _repository.GetVersionsAsync(id));
+
+    [HttpPost("{id}/restore/{versionId}")]
+    public async Task<IActionResult> Restore(Guid id, Guid versionId)
+    {
+        var version = await _repository.GetVersionAsync(id, versionId);
+        if (version is null) return NotFound("Version not found");
+        var doc = await _repository.GetByIdAsync(id);
+        // Snapshot current before restore.
+        await _repository.CreateVersionAsync(new DocumentVersion
+        {
+            DocumentId = doc.Id,
+            Title = doc.Title,
+            Content = doc.Content,
+            Settings = doc.Settings,
+            CreatedAt = DateTime.UtcNow,
+        });
+        doc.Title = version.Title;
+        doc.Content = version.Content;
+        doc.Settings = version.Settings;
+        await _repository.UpdateAsync(doc);
+        return Ok(doc);
+    }
 }

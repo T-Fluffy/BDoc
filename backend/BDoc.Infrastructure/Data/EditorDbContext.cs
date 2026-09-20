@@ -8,4 +8,5 @@ public class EditorDbContext : DbContext
     public EditorDbContext(DbContextOptions<EditorDbContext> options) : base(options) { }
 
     public DbSet<Document> Documents => Set<Document>();
+    public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
 }

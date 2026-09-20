@@ -64,6 +64,7 @@ interface NavbarProps {
   onFindReplace?: () => void;
   onWordCount?: () => void;
   onHelp?: () => void;
+  onVersionHistory?: () => void;
   title?: string;
   onTitleChange?: (value: string) => void;
   titleStatus?: ReactNode;
@@ -95,6 +96,7 @@ export default function NavbarComponent({
   onFindReplace,
   onWordCount,
   onHelp,
+  onVersionHistory,
   title,
   onTitleChange,
   titleStatus,
@@ -607,6 +609,7 @@ export default function NavbarComponent({
             items={[
               { key: 'wc', label: 'Word count…', action: () => { onWordCount?.(); closeMenu(); } },
               { key: 'find', label: 'Find and replace…', shortcut: 'Ctrl+H', action: () => { onFindReplace?.(); closeMenu(); } },
+              ...(onVersionHistory ? [{ key: 'vh', label: 'Version history', action: () => { onVersionHistory(); closeMenu(); } }] : []),
             ]}
           />
         )}

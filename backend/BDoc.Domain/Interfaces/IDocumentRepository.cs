@@ -9,4 +9,7 @@ public interface IDocumentRepository
     Task CreateAsync(Document document);
     Task UpdateAsync(Document document);
     Task DeleteAsync(Guid id);
+    Task<IEnumerable<DocumentVersion>> GetVersionsAsync(Guid documentId);
+    Task<DocumentVersion?> GetVersionAsync(Guid documentId, Guid versionId);
+    Task<DocumentVersion> CreateVersionAsync(DocumentVersion version);
 }

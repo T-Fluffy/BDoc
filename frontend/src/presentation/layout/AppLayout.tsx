@@ -28,6 +28,7 @@ interface AppLayoutProps {
   onFindReplace?: () => void;
   onWordCount?: () => void;
   onHelp?: () => void;
+  onVersionHistory?: () => void;
   title?: string;
   onTitleChange?: (value: string) => void;
   titleStatus?: ReactNode;
@@ -58,6 +59,7 @@ export default function AppLayout({
   onFindReplace,
   onWordCount,
   onHelp,
+  onVersionHistory,
   title,
   onTitleChange,
   titleStatus,
@@ -95,6 +97,7 @@ export default function AppLayout({
         onFindReplace={onFindReplace}
         onWordCount={onWordCount}
         onHelp={onHelp}
+        onVersionHistory={onVersionHistory}
         title={title}
         onTitleChange={onTitleChange}
         titleStatus={titleStatus}

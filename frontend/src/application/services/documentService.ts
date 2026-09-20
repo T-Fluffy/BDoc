@@ -30,3 +30,21 @@ export const updateDocument = async (doc: Document): Promise<void> => {
 export const deleteDocument = async (id: string): Promise<void> => {
   await axios.delete(`${API}/${id}`);
 };
+
+export interface DocumentVersion {
+  id: string;
+  documentId: string;
+  title: string;
+  content: string;
+  settings: string | null;
+  createdAt: string;
+}
+
+export const getVersions = async (docId: string): Promise<DocumentVersion[]> => {
+  const res = await axios.get<DocumentVersion[]>(`${API}/${docId}/versions`);
+  return res.data;
+};
+
+export const restoreVersion = async (docId: string, versionId: string): Promise<void> => {
+  await axios.post(`${API}/${docId}/restore/${versionId}`);
+};
