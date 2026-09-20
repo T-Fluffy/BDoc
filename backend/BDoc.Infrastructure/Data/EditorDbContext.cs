@@ -9,4 +9,5 @@ public class EditorDbContext : DbContext
 
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
+    public DbSet<User> Users => Set<User>();
 }

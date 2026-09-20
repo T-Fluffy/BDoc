@@ -19,7 +19,7 @@ test.describe('editing integrity (anti-corruption)', () => {
   }) => {
     const doc = await createDoc(request, { title: 'E2E Delete', content: paras(60) });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       const before = await editorText(page);
       await page.evaluate(() => {
@@ -53,7 +53,7 @@ test.describe('editing integrity (anti-corruption)', () => {
   }) => {
     const doc = await createDoc(request, { title: 'E2E Typing', content: paras(40) });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       await page.evaluate(() => {
         const pm = document.querySelector('.ProseMirror')!;
@@ -91,7 +91,7 @@ test.describe('editing integrity (anti-corruption)', () => {
   }) => {
     const doc = await createDoc(request, { title: 'E2E Undo', content: paras(40) });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       const before = await editorText(page);
       await page.evaluate(() => {
@@ -123,7 +123,7 @@ test.describe('editing integrity (anti-corruption)', () => {
       content: '<p>Mark persistence check words.</p>',
     });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       // Native range selection keeps ProseMirror selection in sync when focused.
       await page.evaluate(() => {
@@ -172,7 +172,7 @@ test.describe('editing integrity (anti-corruption)', () => {
   }) => {
     const doc = await createDoc(request, { title: 'E2E Cursor', content: paras(45) });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       const geom = await page.evaluate(() => {
         const br = document.querySelector('.page-break')!;

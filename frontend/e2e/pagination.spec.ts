@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import {
+  API_URL,
   bulletList,
   breakCount,
   createDoc,
@@ -18,7 +19,7 @@ test.describe('pagination engine', () => {
       paras(20) + table(8) + bulletList(60) + paras(10, 'Tail');
     const doc = await createDoc(request, { title: 'E2E Edge', content: html });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       const a = await sheetCount(page);
       expect(a).toBeGreaterThan(1);
@@ -42,7 +43,7 @@ test.describe('pagination engine', () => {
     html += bulletList(6) + table(8);
     const doc = await createDoc(request, { title: 'E2E Gaps', content: html });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       const res = await noTextInGaps(page);
       expect(res.bad).toEqual([]);
@@ -75,7 +76,7 @@ test.describe('pagination engine', () => {
   }) => {
     const big = await createDoc(request, { title: 'E2E Big', content: paras(60) });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, big.id);
       expect(await sheetCount(page)).toBeGreaterThan(1);
 
@@ -123,8 +124,7 @@ test.describe('pagination engine', () => {
       expect(await sheetCount(page)).toBe(1);
       expect(await statusBar(page)).toContain('Page 1 of 1');
 
-      const check = await request.delete(`/documents/${newId}`).catch(() => null);
-      void check;
+      await request.delete(`${API_URL}/documents/${newId}`).catch(() => undefined);
     } finally {
       await big.dispose();
     }
@@ -139,7 +139,7 @@ test.describe('pagination engine', () => {
       }
       const doc = await createDoc(request, { title: `E2E Head ${n}`, content: html });
       try {
-        await login(page);
+        await login(page, request);
         await openEditor(page, doc.id);
         const stranded = await page.evaluate(() =>
           Array.from(document.querySelectorAll('.page-break')).filter((br) => {
@@ -169,7 +169,7 @@ test.describe('pagination engine', () => {
       content: `<p>Intro.</p>${table(40)}<p>Outro.</p>`,
     });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       const stats = await page.evaluate(() => ({
         tables: document.querySelectorAll('.ProseMirror table').length,
@@ -199,7 +199,7 @@ test.describe('pagination engine', () => {
       content: '<h1>One</h1><h2>Two</h2><h3>Three</h3><p>Body.</p>',
     });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       const tags = await page.evaluate(() =>
         Array.from(document.querySelector('.ProseMirror')!.children).map((el) => el.tagName).join(','),
@@ -213,7 +213,7 @@ test.describe('pagination engine', () => {
   test('caret page tracks selection across pages', async ({ page, request }) => {
     const doc = await createDoc(request, { title: 'E2E Caret', content: paras(60) });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       // Click a paragraph ~70% through the document.
       await page.evaluate(() => {

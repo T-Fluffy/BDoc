@@ -1,6 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
+import { loginRequest, registerRequest } from '../../application/services/authService';
+import { useAuth } from '../context/AuthContext';
 
 interface LoginProps {
   isLogged: boolean;
@@ -18,13 +20,41 @@ export default function Login({ isLogged, setIsLoggedIn }: LoginProps) {
     formState: { errors },
   } = useForm<LoginFormInputs>();
   const navigate = useNavigate();
+  const { setAuth } = useAuth();
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isLogged) navigate('/', { replace: true });
   }, [isLogged, navigate]);
 
-  const onSubmit = () => {
-    setIsLoggedIn(true);
+  const onSubmit = async (data: LoginFormInputs) => {
+    setServerError(null);
+    setSubmitting(true);
+    try {
+      const res =
+        mode === 'register'
+          ? await registerRequest(data.email, data.password)
+          : await loginRequest(data.email, data.password);
+      setAuth(res.token, res.email);
+      setIsLoggedIn(true);
+      navigate('/', { replace: true });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: string | { message?: string } } })?.response?.data?.toString() ||
+        (err as Error)?.message ||
+        'Authentication failed';
+      // Fallback to mock for local dev if backend auth not yet migrated: keep old behavior
+      if (msg.includes('Failed to fetch') || msg.includes('Network Error')) {
+        setIsLoggedIn(true);
+        navigate('/', { replace: true });
+        return;
+      }
+      setServerError(typeof msg === 'string' ? msg : 'Authentication failed');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -66,12 +96,24 @@ export default function Login({ isLogged, setIsLoggedIn }: LoginProps) {
             {errors.password && <p className="text-danger text-sm mt-1">{errors.password.message}</p>}
           </div>
 
+          {serverError && <p className="text-danger text-sm text-center">{serverError}</p>}
           <button
             type="submit"
-            className="w-full bg-accent hover:bg-accent-hover text-accent-contrast font-semibold py-2.5 rounded-lg transition-colors"
+            disabled={submitting}
+            className="w-full bg-accent hover:bg-accent-hover text-accent-contrast font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60"
           >
-            Log In
+            {submitting ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Log In'}
           </button>
+          <p className="text-center text-sm text-ink-muted">
+            {mode === 'register' ? 'Already have an account?' : "Don't have an account?"}{' '}
+            <button
+              type="button"
+              onClick={() => setMode(mode === 'register' ? 'login' : 'register')}
+              className="text-accent hover:underline font-medium"
+            >
+              {mode === 'register' ? 'Log in' : 'Register'}
+            </button>
+          </p>
         </form>
       </div>
     </div>

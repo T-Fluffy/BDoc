@@ -30,7 +30,7 @@ test.describe('page features', () => {
   test('zoom keeps breaks and text, persists across reload', async ({ page, request }) => {
     const doc = await createDoc(request, { title: 'E2E Zoom', content: paras(60) });
     try {
-      await login(page);
+      await login(page, request);
       await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       const base = {
@@ -83,7 +83,7 @@ test.describe('page features', () => {
   test('ruler drag sets custom margins and persists', async ({ page, request }) => {
     const doc = await createDoc(request, { title: 'E2E Ruler', content: paras(20) });
     try {
-      await login(page);
+      await login(page, request);
       // Isolate from previous zoom test's persisted 150%.
       await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
@@ -173,7 +173,7 @@ test.describe('page features', () => {
       content: '<p>Indent me first paragraph.</p><p>Second plain paragraph.</p>',
     });
     try {
-      await login(page);
+      await login(page, request);
       await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       expect(await page.evaluate(() => document.querySelectorAll('.bdoc-ruler-indent').length)).toBe(2);
@@ -216,7 +216,7 @@ test.describe('page features', () => {
       content: '<p>Tab stop test line one.</p>',
     });
     try {
-      await login(page);
+      await login(page, request);
       await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       // Click ruler track at 60% to add a stop.
@@ -274,7 +274,7 @@ test.describe('page features', () => {
   }) => {
     const doc = await createDoc(request, { title: 'E2E HF', content: paras(55), settings: HF_SETTINGS });
     try {
-      await login(page);
+      await login(page, request);
       await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       const zones = await page.evaluate(() => ({
@@ -311,7 +311,7 @@ test.describe('page features', () => {
   test('printed PDF matches on-screen sheets, with headers', async ({ page, request }) => {
     const doc = await createDoc(request, { title: 'E2E Print', content: paras(55), settings: HF_SETTINGS });
     try {
-      await login(page);
+      await login(page, request);
       await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       const sheets = await sheetCount(page);

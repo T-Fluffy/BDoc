@@ -3,6 +3,28 @@ import type { Document } from '../../domain/models/DocumentModel';
 
 const API = `${import.meta.env.VITE_API_URL ?? '/api'}/documents`;
 
+// Attach JWT if present.
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('bdoc-token');
+  if (token) {
+    config.headers = config.headers ?? {};
+    (config.headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+  }
+  return config;
+});
+
+axios.interceptors.response.use(
+  (r) => r,
+  (error) => {
+    if (error?.response?.status === 401) {
+      localStorage.removeItem('bdoc-token');
+      localStorage.removeItem('bdoc-email');
+      // Let the UI's auth guard redirect to /login on next render.
+    }
+    return Promise.reject(error);
+  },
+);
+
 export const getDocuments = async (): Promise<Document[]> => {
   const res = await axios.get<Document[]>(API);
   return res.data;

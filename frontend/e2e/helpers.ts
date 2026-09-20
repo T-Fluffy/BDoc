@@ -41,13 +41,51 @@ export function table(rows: number, cols = 2): string {
   return `<table><tbody>${body}</tbody></table>`;
 }
 
+const TEST_EMAIL = process.env.E2E_EMAIL ?? 'e2e@bdoc.test';
+const TEST_PASSWORD = process.env.E2E_PASSWORD ?? 'E2ETest123!';
+
+let cachedToken: string | null = null;
+
+export async function getTestToken(request: APIRequestContext): Promise<string> {
+  if (cachedToken) return cachedToken;
+  // Try login first, then register if needed.
+  let res = await request.post(`${API_URL}/auth/login`, {
+    data: { email: TEST_EMAIL, password: TEST_PASSWORD },
+  });
+  if (!res.ok()) {
+    res = await request.post(`${API_URL}/auth/register`, {
+      data: { email: TEST_EMAIL, password: TEST_PASSWORD },
+    });
+    if (res.ok()) {
+      const data = (await res.json()) as { token: string };
+      cachedToken = data.token;
+      return cachedToken;
+    }
+    // If register also fails (already exists), try login again.
+    res = await request.post(`${API_URL}/auth/login`, {
+      data: { email: TEST_EMAIL, password: TEST_PASSWORD },
+    });
+  }
+  expect(res.ok()).toBeTruthy();
+  const data = (await res.json()) as { token: string };
+  cachedToken = data.token;
+  return cachedToken;
+}
+
+async function authedHeaders(request: APIRequestContext): Promise<Record<string, string>> {
+  const token = await getTestToken(request);
+  return { Authorization: `Bearer ${token}` };
+}
+
 /** Create a document via the API. Caller owns cleanup via dispose(). */
 export async function createDoc(
   request: APIRequestContext,
   seed: SeedDoc,
 ): Promise<{ id: string; dispose: () => Promise<void> }> {
   const id = crypto.randomUUID();
+  const headers = await authedHeaders(request);
   const res = await request.post(API_URL + '/documents', {
+    headers,
     data: {
       id,
       title: seed.title,
@@ -60,15 +98,29 @@ export async function createDoc(
   return {
     id,
     dispose: async () => {
-      await request.delete(`${API_URL}/documents/${id}`).catch(() => undefined);
+      const h = await authedHeaders(request);
+      await request.delete(`${API_URL}/documents/${id}`, { headers: h }).catch(() => undefined);
     },
   };
 }
 
-/** Mock-login (the app's auth is a localStorage flag) and dismiss dialogs. */
-export async function login(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.evaluate(() => localStorage.setItem('bdoc-auth', 'true'));
+/** Real login via JWT (falls back to flag for local dev) and dismiss dialogs. */
+export async function login(page: Page, request?: APIRequestContext): Promise<void> {
+  if (request) {
+    const token = await getTestToken(request);
+    await page.goto('/login');
+    await page.evaluate(
+      ({ t, e }) => {
+        localStorage.setItem('bdoc-token', t);
+        localStorage.setItem('bdoc-email', e);
+        localStorage.setItem('bdoc-auth', 'true');
+      },
+      { t: token, e: TEST_EMAIL },
+    );
+  } else {
+    await page.goto('/login');
+    await page.evaluate(() => localStorage.setItem('bdoc-auth', 'true'));
+  }
   page.on('dialog', (d) => void d.dismiss().catch(() => undefined));
 }
 

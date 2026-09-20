@@ -28,8 +28,9 @@ public class DocumentRepository : IDocumentRepository
 
     public async Task UpdateAsync(Document document)
     {
-        var existing = await _context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == document.Id);
-        if (existing != null && (existing.Content != document.Content || existing.Title != document.Title || existing.Settings != document.Settings))
+        var existing = await _context.Documents.FindAsync(document.Id);
+        if (existing is null) throw new Exception("Document not found");
+        if (existing.Content != document.Content || existing.Title != document.Title || existing.Settings != document.Settings)
         {
             _context.DocumentVersions.Add(new DocumentVersion
             {
@@ -40,8 +41,11 @@ public class DocumentRepository : IDocumentRepository
                 CreatedAt = existing.UpdatedAt,
             });
         }
-        document.UpdatedAt = DateTime.UtcNow;
-        _context.Documents.Update(document);
+        existing.Title = document.Title;
+        existing.Content = document.Content;
+        existing.Settings = document.Settings;
+        existing.OwnerId = document.OwnerId;
+        existing.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
         // Keep only last 50 versions per document.
         var count = await _context.DocumentVersions.CountAsync(v => v.DocumentId == document.Id);

@@ -1,8 +1,11 @@
+using System.Text;
 using BDoc.Domain.Interfaces;
 using BDoc.Infrastructure.Data;
 using BDoc.Infrastructure.Repositories;
+using BDoc.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-
+using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 
 var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:5173"];
@@ -19,8 +22,31 @@ builder.Services.AddCors(options =>
 builder.Services.AddDbContext<EditorDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// DI for Repository
+// DI
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
+builder.Services.AddScoped<AuthService>();
+builder.Services.AddHttpContextAccessor();
+
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "dev-super-secret-key-change-me-32chars!!";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "BDoc";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "BDoc";
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.FromMinutes(2),
+        };
+    });
+builder.Services.AddAuthorization();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -39,5 +65,7 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 app.Run();

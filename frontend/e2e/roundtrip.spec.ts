@@ -201,7 +201,7 @@ test.describe('docx round-trip', () => {
   }) => {
     const seed = await createDoc(request, { title: 'E2E Seed', content: '<p>seed</p>' });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, seed.id);
       // Upload the tabs fixture through the hidden file input.
       const { join, dirname } = await import('node:path');
@@ -234,7 +234,7 @@ test.describe('docx round-trip', () => {
         '<p>Export page check one.</p><p>Export page check two.</p><p>Export page check three.</p>',
     });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       expect(await sheetCount(page)).toBe(1);
       const buf = await exportDocx(request, doc.id);

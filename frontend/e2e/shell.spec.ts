@@ -5,7 +5,7 @@ test.describe('app shell', () => {
   test('menu row exposes all seven menus', async ({ page, request }) => {
     const doc = await createDoc(request, { title: 'E2E Menus', content: paras(5) });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       const row = await page.evaluate(() =>
         Array.from(document.querySelectorAll('nav > div:last-child button')).map((b) =>
@@ -26,7 +26,7 @@ test.describe('app shell', () => {
       content: '<p>Submenu check words here.</p>',
     });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       // Caret into text with a real click.
       const pt = await page.evaluate(() => {
@@ -71,7 +71,7 @@ test.describe('app shell', () => {
       content: '<p>Toolbar verification paragraph one.</p><p>Second paragraph here.</p>',
     });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       const selects = await page.evaluate(() =>
         Array.from(document.querySelectorAll('.bdoc-scroll select')).map(
@@ -134,7 +134,7 @@ test.describe('app shell', () => {
       content: '<p>Find me alpha and find me beta.</p><p>No match here.</p><p>Find me gamma.</p>',
     });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       await page.keyboard.press('ControlOrMeta+h');
       await page.waitForTimeout(500);
@@ -177,7 +177,7 @@ test.describe('app shell', () => {
   test('word count and help dialogs', async ({ page, request }) => {
     const doc = await createDoc(request, { title: 'E2E Dialogs', content: '<p>Seven small words here now.</p>' });
     try {
-      await login(page);
+      await login(page, request);
       await openEditor(page, doc.id);
       await openMenu(page, 'Tools');
       await page.evaluate(() => {
@@ -205,7 +205,7 @@ test.describe('app shell', () => {
   test('library search, create, delete and auth guard', async ({ page, request }) => {
     const doc = await createDoc(request, { title: 'E2E UniqueLibraryDoc', content: '<p>x</p>' });
     try {
-      await login(page);
+      await login(page, request);
       await page.goto('/');
       await page.waitForTimeout(1200);
       // Search filters.
@@ -221,8 +221,12 @@ test.describe('app shell', () => {
       await page.waitForTimeout(400);
       expect(await page.evaluate(() => document.body.innerText.includes('E2E UniqueLibraryDoc'))).toBe(false);
 
-      // Auth guard: cleared flag redirects to login.
-      await page.evaluate(() => localStorage.removeItem('bdoc-auth'));
+      // Auth guard: cleared tokens redirect to login.
+      await page.evaluate(() => {
+        localStorage.removeItem('bdoc-auth');
+        localStorage.removeItem('bdoc-token');
+        localStorage.removeItem('bdoc-email');
+      });
       await page.goto('/');
       await page.waitForTimeout(800);
       expect(page.url()).toContain('/login');
@@ -234,7 +238,7 @@ test.describe('app shell', () => {
   test('mobile width has no horizontal overflow', async ({ page, request }) => {
     const doc = await createDoc(request, { title: 'E2E Mobile', content: paras(10) });
     try {
-      await login(page);
+      await login(page, request);
       await page.setViewportSize({ width: 700, height: 900 });
       await openEditor(page, doc.id);
       expect(await page.evaluate(() => !!document.querySelector('nav'))).toBe(true);

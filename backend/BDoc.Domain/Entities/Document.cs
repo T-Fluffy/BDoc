@@ -7,4 +7,5 @@ public class Document
     public string Content { get; set; } = string.Empty;
     public string? Settings { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public Guid? OwnerId { get; set; }
 }
