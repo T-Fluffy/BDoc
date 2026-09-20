@@ -65,10 +65,15 @@ function ItemRow({
   return (
     <div key={item.key} className="relative group/sub">
       {row}
-      <div className="absolute left-full top-0 ml-1 w-56 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] p-1.5 z-50 hidden group-hover/sub:block">
-        {item.children.map((sub) => (
-          <ItemRow key={sub.key} item={sub} onAction={onAction} />
-        ))}
+      {/* Transparent hover bridge (pl-1): keeps the submenu open while the
+          mouse travels from the row to the panel (a margin gap would break
+          :hover and flicker the submenu shut). */}
+      <div className="absolute left-full top-0 z-50 hidden pl-1 group-hover/sub:block">
+        <div className="w-56 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] p-1.5">
+          {item.children.map((sub) => (
+            <ItemRow key={sub.key} item={sub} onAction={onAction} />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -123,7 +128,7 @@ export default function DocsMenu({ label, items, open, onOpen, onClose, buttonCl
           <>
             <div className="fixed inset-0 z-[290]" onClick={onClose} />
             <div
-              className={`fixed w-64 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in duration-150 z-[300] ${panelClassName ?? ''}`}
+              className={`fixed w-64 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] z-[300] ${panelClassName ?? ''}`}
               style={{ left: pos.left, top: pos.top }}
             >
               <div className="p-1.5">
