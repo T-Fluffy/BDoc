@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
@@ -109,6 +109,15 @@ export default function NavbarComponent({
   const [menu, setMenu] = useState<
     'insert' | 'file' | 'page' | 'user' | 'zoom' | 'edit' | 'view' | 'format' | 'tools' | 'help' | null
   >(null);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!editor) return;
+    const bump = () => setTick((t) => t + 1);
+    editor.on('update', bump);
+    return () => {
+      editor.off('update', bump);
+    };
+  }, [editor]);
 
   const updatePage = (patch: Partial<PageSettings>) => {
     if (pageSettings && onPageSettingsChange) {
@@ -178,6 +187,17 @@ export default function NavbarComponent({
     else document.documentElement.requestFullscreen().catch(() => undefined);
     closeMenu();
   };
+
+  const commentCount = (() => {
+    if (!editor) return 0;
+    const ids = new Set<string>();
+    editor.state.doc.descendants((node) => {
+      node.marks.forEach((m) => {
+        if (m.type.name === 'comment') ids.add((m.attrs as { id: string }).id);
+      });
+    });
+    return ids.size;
+  })();
 
   const togglePageNumbers = () => {
     if (!pageSettings || !onPageSettingsChange) return;
@@ -498,7 +518,18 @@ export default function NavbarComponent({
               { key: 'pnum', label: 'Page numbers', checked: pnChecked, keepOpen: true, action: togglePageNumbers },
               { key: 'pbreak', label: 'Page break', action: insertUserBreak },
               ...(onInsertToc ? [{ key: 'toc', label: 'Table of contents', action: () => { onInsertToc(); closeMenu(); } }] : []),
-              ...(onAddComment ? [{ key: 'comment', label: 'Comment', action: () => { onAddComment(); closeMenu(); } }] : []),
+              ...(onAddComment
+                ? [
+                    {
+                      key: 'comment',
+                      label: `Comment${commentCount ? ` (${commentCount})` : ''}`,
+                      action: () => {
+                        onAddComment();
+                        closeMenu();
+                      },
+                    },
+                  ]
+                : []),
             ]}
           />
         )}

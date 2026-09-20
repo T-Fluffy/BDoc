@@ -978,44 +978,85 @@ export default function EditorPage() {
     return () => stack.removeEventListener('mousedown', onMouseDown);
   }, [editor, loading, document?.id]);
 
-  // Comment click: resolve/remove on click of highlighted span.
+  const [activeComment, setActiveComment] = useState<{
+    id: string;
+    text: string;
+    author: string;
+    resolved: boolean;
+    rect: DOMRect;
+  } | null>(null);
+
+  const findCommentRange = useCallback(
+    (id: string): { from: number; to: number } | null => {
+      if (!editor) return null;
+      let from = -1;
+      let to = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (from !== -1) return false;
+        const mark = node.marks.find((m) => m.type.name === 'comment' && (m.attrs as { id: string }).id === id);
+        if (mark) {
+          from = pos;
+          let end = pos + node.nodeSize;
+          editor.state.doc.nodesBetween(pos, editor.state.doc.content.size, (n, p) => {
+            if (p < pos) return true;
+            if (p > end) return false;
+            const mm = n.marks.find((m) => m.type.name === 'comment' && (m.attrs as { id: string }).id === id);
+            if (mm && n.isText) end = p + n.nodeSize;
+            return true;
+          });
+          to = end;
+          return false;
+        }
+        return true;
+      });
+      return from !== -1 ? { from, to } : null;
+    },
+    [editor],
+  );
+
+  const resolveComment = useCallback(
+    (id: string) => {
+      const range = findCommentRange(id);
+      if (!range || !editor) return;
+      const tr = editor.state.tr;
+      // Preserve other attrs but flip resolved
+      const markType = editor.state.schema.marks.comment;
+      const existing = editor.state.doc.resolve(range.from + 1).marks().find((m) => m.type.name === 'comment' && (m.attrs as { id: string }).id === id);
+      const attrs = { ...(existing?.attrs ?? {}), resolved: true };
+      tr.removeMark(range.from, range.to, markType);
+      tr.addMark(range.from, range.to, markType.create(attrs));
+      editor.view.dispatch(tr);
+      setActiveComment(null);
+    },
+    [editor, findCommentRange],
+  );
+
+  const deleteComment = useCallback(
+    (id: string) => {
+      const range = findCommentRange(id);
+      if (!range || !editor) return;
+      editor.view.dispatch(editor.state.tr.removeMark(range.from, range.to, editor.state.schema.marks.comment));
+      setActiveComment(null);
+    },
+    [editor, findCommentRange],
+  );
+
+  // Comment click: show anchored card with quote + author, Resolve / Delete.
   useEffect(() => {
     if (!editor) return;
     const dom = editor.view.dom as HTMLElement;
     const onClick = (e: MouseEvent) => {
       const span = (e.target as HTMLElement).closest('span[data-comment]') as HTMLElement | null;
-      if (!span) return;
+      if (!span) {
+        setActiveComment(null);
+        return;
+      }
       const text = span.getAttribute('data-comment-text') || '';
       const id = span.getAttribute('data-comment-id');
       if (!id) return;
-      if (window.confirm(`Comment: "${text}"\n\nOK to remove, Cancel to keep.`)) {
-        const { state, view } = editor;
-        let from = -1;
-        let to = -1;
-        state.doc.descendants((node, pos) => {
-          if (from !== -1) return false;
-          const mark = node.marks.find((m) => m.type.name === 'comment' && (m.attrs as { id: string }).id === id);
-          if (mark) {
-            from = pos;
-            // Find continuous range with same comment id
-            let end = pos + node.nodeSize;
-            state.doc.nodesBetween(pos, state.doc.content.size, (n, p) => {
-              if (p < pos) return true;
-              if (p > end) return false;
-              const mm = n.marks.find((m) => m.type.name === 'comment' && (m.attrs as { id: string }).id === id);
-              if (mm && n.isText) end = p + n.nodeSize;
-              return true;
-            });
-            to = end;
-            return false;
-          }
-          return true;
-        });
-        if (from !== -1) {
-          view.dispatch(state.tr.removeMark(from, to, state.schema.marks.comment));
-          view.focus();
-        }
-      }
+      const author = span.getAttribute('data-comment-author') || 'You';
+      const resolved = span.getAttribute('data-comment-resolved') === 'true';
+      setActiveComment({ id, text, author, resolved, rect: span.getBoundingClientRect() });
     };
     dom.addEventListener('click', onClick);
     return () => dom.removeEventListener('click', onClick);
@@ -1624,6 +1665,65 @@ export default function EditorPage() {
           y={tableMenu.y}
           onClose={() => setTableMenu(null)}
         />
+      )}
+      {activeComment && (
+        <div
+          className="fixed z-[250] w-72 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] p-3"
+          style={{
+            left: Math.min(window.innerWidth - 300, Math.max(12, activeComment.rect.left)),
+            top: Math.min(window.innerHeight - 180, activeComment.rect.bottom + 8),
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-[11px] uppercase tracking-widest text-ink-faint mb-1">
+            {activeComment.author} — {activeComment.resolved ? 'Resolved' : 'Comment'}
+          </div>
+          <div className="text-sm text-ink mb-2 whitespace-pre-wrap break-words">{activeComment.text}</div>
+          <div className="flex gap-2">
+            {!activeComment.resolved && (
+              <button
+                type="button"
+                onClick={() => resolveComment(activeComment.id)}
+                className="flex-1 py-1.5 rounded-lg text-sm bg-accent text-accent-contrast hover:bg-accent-hover transition-colors"
+              >
+                Resolve
+              </button>
+            )}
+            {activeComment.resolved && (
+              <button
+                type="button"
+                onClick={() => {
+                  const range = findCommentRange(activeComment.id);
+                  if (!range || !editor) return;
+                  const markType = editor.state.schema.marks.comment;
+                  const existing = editor.state.doc.resolve(range.from + 1).marks().find((m) => m.type.name === 'comment' && (m.attrs as { id: string }).id === activeComment.id);
+                  const tr = editor.state.tr;
+                  tr.removeMark(range.from, range.to, markType);
+                  tr.addMark(range.from, range.to, markType.create({ ...(existing?.attrs ?? {}), resolved: false }));
+                  editor.view.dispatch(tr);
+                  setActiveComment(null);
+                }}
+                className="flex-1 py-1.5 rounded-lg text-sm bg-soft text-ink hover:bg-soft/80 transition-colors"
+              >
+                Unresolve
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => deleteComment(activeComment.id)}
+              className="flex-1 py-1.5 rounded-lg text-sm bg-danger-soft text-danger hover:brightness-110 transition-colors"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveComment(null)}
+              className="px-3 py-1.5 rounded-lg text-sm bg-soft text-ink-muted hover:text-ink transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
     </AppLayout>
   );
