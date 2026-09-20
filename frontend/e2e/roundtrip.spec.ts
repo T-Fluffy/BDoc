@@ -43,15 +43,26 @@ test.describe('docx round-trip', () => {
       const buf = await exportDocx(request, doc.id);
       const xml = docXml(buf);
 
-      // Headers: default + first parts exist with text.
-      const parts = new AdmZip(buf).getEntries().map((e) => e.entryName);
+      // Headers: default + first parts exist with text (parts are separate files, not document.xml).
+      const zip = new AdmZip(buf);
+      const parts = zip.getEntries().map((e) => e.entryName);
       expect(parts.some((p) => p.startsWith('word/header'))).toBe(true);
       expect(parts.some((p) => p.startsWith('word/footer'))).toBe(true);
-      expect(xml).toContain('RT Header Default');
-      expect(xml).toContain('RT Header First');
-      // Footers carry live PAGE/NUMPAGES fields, right aligned.
-      expect(xml).toMatch(/w:instr=" PAGE "/);
-      expect(xml).toMatch(/w:instr=" NUMPAGES "/);
+      const headerTexts = zip
+        .getEntries()
+        .filter((e) => e.entryName.startsWith('word/header'))
+        .map((e) => zip.readAsText(e))
+        .join(' ');
+      expect(headerTexts).toContain('RT Header Default');
+      expect(headerTexts).toContain('RT Header First');
+      // Footers carry live PAGE/NUMPAGES fields (also in part files, not document.xml).
+      const footerTexts = zip
+        .getEntries()
+        .filter((e) => e.entryName.startsWith('word/footer'))
+        .map((e) => zip.readAsText(e))
+        .join(' ');
+      expect(footerTexts).toMatch(/w:instr=" PAGE "/);
+      expect(footerTexts).toMatch(/w:instr=" NUMPAGES "/);
       // Section refs + flags.
       expect(xml).toContain('w:type="first"');
       expect(xml).toContain('<w:titlePg');

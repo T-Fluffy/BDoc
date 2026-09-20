@@ -96,7 +96,7 @@ test.describe('pagination engine', () => {
         return true;
       });
       expect(newClicked).toBe(true);
-      await page.waitForFunction((old) => !window.location.pathname.endsWith(old), bigId, {
+      await page.waitForFunction((old: string) => !window.location.pathname.endsWith(old), big.id, {
         timeout: 20000,
       }).catch(() => undefined);
       await page.waitForTimeout(3000);

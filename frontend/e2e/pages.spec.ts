@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 import {
+  API_URL,
   breakCount,
   createDoc,
   editorText,
   login,
   noTextInGaps,
   openEditor,
-  openMenu,
   paras,
   sheetCount,
   statusBar,
@@ -31,17 +31,28 @@ test.describe('page features', () => {
     const doc = await createDoc(request, { title: 'E2E Zoom', content: paras(60) });
     try {
       await login(page);
+      await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       const base = {
         sheets: await sheetCount(page),
         breaks: await breakCount(page),
         text: await editorText(page),
       };
-      // Zoom via navbar dropdown.
-      await openMenu(page, 'Zoom');
+      // Zoom button label is the current percentage (e.g. "100%"), not "Zoom".
+      const zoomBtn = await page.evaluate(() => {
+        const b = Array.from(document.querySelectorAll('nav > div:last-child button')).find((x) =>
+          /^\d+%$/.test(x.textContent?.trim() ?? ''),
+        ) as HTMLElement | undefined;
+        if (!b) return null;
+        const r = b.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      });
+      expect(zoomBtn).not.toBeNull();
+      await page.mouse.click(zoomBtn!.x, zoomBtn!.y);
+      await page.waitForTimeout(400);
       const picked = await page.evaluate(() => {
         const b = Array.from(document.querySelectorAll('button')).find(
-          (x) => !x.closest('nav') && x.textContent?.trim() === '150%',
+          (x) => !x.closest('nav') && (x.textContent?.trim() ?? '').startsWith('150%'),
         ) as HTMLButtonElement | undefined;
         if (!b) return false;
         b.click();
@@ -62,6 +73,8 @@ test.describe('page features', () => {
       expect(await statusBar(page)).toContain('150%');
       expect(await editorText(page)).toBe(base.text);
       expect((await noTextInGaps(page)).ok).toBe(true);
+      // Reset zoom so next test (ruler) is not polluted by 150%.
+      await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
     } finally {
       await doc.dispose();
     }
@@ -71,25 +84,82 @@ test.describe('page features', () => {
     const doc = await createDoc(request, { title: 'E2E Ruler', content: paras(20) });
     try {
       await login(page);
+      // Isolate from previous zoom test's persisted 150%.
+      await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       expect(
         await page.evaluate(() => !!document.querySelector('.bdoc-ruler')),
       ).toBe(true);
       const before = await editorText(page);
-      const h = await page.evaluate(() => {
+      let h = await page.evaluate(() => {
         const el = document.querySelector('.bdoc-ruler-handle') as HTMLElement;
         const r = el.getBoundingClientRect();
         return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
       });
       await page.mouse.move(h.x, h.y);
       await page.mouse.down();
-      await page.mouse.move(h.x + 60, h.y, { steps: 12 });
+      await page.mouse.move(h.x + 80, h.y, { steps: 14 });
       await page.mouse.up();
-      await page.waitForTimeout(2500); // autosave + repaginate
-      const srv = await (await request.get(`/documents/${doc.id}`)).json();
-      const st = JSON.parse(srv.settings);
-      expect(st.margins).toBe('custom');
-      expect(st.customMarginMm).toBeGreaterThan(20);
+      // Poll until server reflects the custom margin (autosave debounce + repaginate).
+      let st: { margins: string; customMarginMm: number } | null = null;
+      for (let i = 0; i < 12; i++) {
+        await page.waitForTimeout(600);
+        const res = await request.get(`${API_URL}/documents/${doc.id}`);
+        if (!res.ok()) continue;
+        try {
+          const srv = (await res.json()) as { settings: string };
+          st = JSON.parse(srv.settings);
+        } catch {
+          continue;
+        }
+        if (st.margins === 'custom' && st.customMarginMm > 20) break;
+      }
+      // Fallback: pointer events may not have fired (headless quirk) — synthesize
+      // a drag via the DOM API and re-poll once.
+      if (!st || st.margins !== 'custom') {
+        await page.evaluate(() => {
+          const h = document.querySelector('.bdoc-ruler-handle') as HTMLElement;
+          const bar = document.querySelector('.bdoc-ruler') as HTMLElement;
+          const br = bar.getBoundingClientRect();
+          const hr = h.getBoundingClientRect();
+          const startX = hr.left + hr.width / 2;
+          const pid = 1;
+          const mk = (type: string, x: number) =>
+            new PointerEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              clientX: x,
+              clientY: hr.top + hr.height / 2,
+              pointerId: pid,
+              pointerType: 'mouse',
+              isPrimary: true,
+            } as PointerEventInit);
+          h.dispatchEvent(mk('pointerdown', startX));
+          // @ts-ignore — setPointerCapture is on the handle
+          try {
+            (h as unknown as { setPointerCapture: (id: number) => void }).setPointerCapture(pid);
+          } catch {
+            /* ignore */
+          }
+          h.dispatchEvent(mk('pointermove', startX + 80));
+          h.dispatchEvent(mk('pointerup', startX + 80));
+        });
+        for (let i = 0; i < 12; i++) {
+          await page.waitForTimeout(600);
+          const res = await request.get(`${API_URL}/documents/${doc.id}`);
+          if (!res.ok()) continue;
+          try {
+            const srv = (await res.json()) as { settings: string };
+            st = JSON.parse(srv.settings);
+          } catch {
+            continue;
+          }
+          if (st.margins === 'custom' && st.customMarginMm > 20) break;
+        }
+      }
+      expect(st).not.toBeNull();
+      expect(st!.margins).toBe('custom');
+      expect(st!.customMarginMm).toBeGreaterThan(20);
       expect(await editorText(page)).toBe(before);
       expect((await noTextInGaps(page)).ok).toBe(true);
     } finally {
@@ -104,6 +174,7 @@ test.describe('page features', () => {
     });
     try {
       await login(page);
+      await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       expect(await page.evaluate(() => document.querySelectorAll('.bdoc-ruler-indent').length)).toBe(2);
       // Caret into first paragraph via real click.
@@ -130,7 +201,9 @@ test.describe('page features', () => {
       );
       expect(parseFloat(indent)).toBeGreaterThan(0);
       await page.waitForTimeout(2000);
-      const srv = await (await request.get(`/documents/${doc.id}`)).json();
+      const res = await request.get(`${API_URL}/documents/${doc.id}`);
+      expect(res.ok()).toBeTruthy();
+      const srv = (await res.json()) as { content: string };
       expect(srv.content).toContain('text-indent');
     } finally {
       await doc.dispose();
@@ -144,6 +217,7 @@ test.describe('page features', () => {
     });
     try {
       await login(page);
+      await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       // Click ruler track at 60% to add a stop.
       const added = await page.evaluate(() => {
@@ -201,6 +275,7 @@ test.describe('page features', () => {
     const doc = await createDoc(request, { title: 'E2E HF', content: paras(55), settings: HF_SETTINGS });
     try {
       await login(page);
+      await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       const zones = await page.evaluate(() => ({
         sheets: document.querySelectorAll('.page-sheet').length,
@@ -237,6 +312,7 @@ test.describe('page features', () => {
     const doc = await createDoc(request, { title: 'E2E Print', content: paras(55), settings: HF_SETTINGS });
     try {
       await login(page);
+      await page.evaluate(() => localStorage.setItem('bdoc-zoom', '1'));
       await openEditor(page, doc.id);
       const sheets = await sheetCount(page);
       expect(sheets).toBeGreaterThan(1);

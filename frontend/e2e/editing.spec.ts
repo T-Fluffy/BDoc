@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import {
+  API_URL,
   breakCount,
   caretInfo,
   createDoc,
@@ -21,7 +22,6 @@ test.describe('editing integrity (anti-corruption)', () => {
       await login(page);
       await openEditor(page, doc.id);
       const before = await editorText(page);
-      // Caret right after "Paragraph 1:" in the first paragraph, Backspace deletes ":".
       await page.evaluate(() => {
         const pm = document.querySelector('.ProseMirror')!;
         const p = pm.querySelector('p')!;
@@ -38,7 +38,6 @@ test.describe('editing integrity (anti-corruption)', () => {
       await page.waitForTimeout(200);
       const mid = await editorText(page);
       expect(mid.length).toBe(before.length - 1);
-      // Let pagination + autosave settle: no revert, no fragmentation growth.
       await page.waitForTimeout(2000);
       const after = await editorText(page);
       expect(after).toBe(mid);
@@ -126,46 +125,36 @@ test.describe('editing integrity (anti-corruption)', () => {
     try {
       await login(page);
       await openEditor(page, doc.id);
-      // Select first 4 chars and bold them via the Format menu.
+      // Native range selection keeps ProseMirror selection in sync when focused.
       await page.evaluate(() => {
-        const pm = document.querySelector('.ProseMirror')!;
-        const p = pm.querySelector('p')!;
-        const range = document.createRange();
-        range.setStart(p.firstChild, 0);
-        range.setEnd(p.firstChild, 4);
-        const sel = window.getSelection()!;
-        sel.removeAllRanges();
-        sel.addRange(range);
-        (pm as HTMLElement).focus();
+        (document.querySelector('.ProseMirror') as HTMLElement).focus();
       });
-      await page.evaluate(() => {
-        const b = Array.from(document.querySelectorAll('nav > div:last-child button')).find(
-          (x) => x.textContent?.trim() === 'Format',
-        ) as HTMLButtonElement | undefined;
-        b?.click();
-      });
-      await page.waitForTimeout(400);
-      const tb = await page.evaluate(() => {
-        const b = Array.from(document.querySelectorAll('button')).find(
-          (x) => !x.closest('nav') && (x.textContent?.trim() ?? '').startsWith('Text'),
-        );
-        const r = b!.getBoundingClientRect();
-        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-      });
-      await page.mouse.move(tb.x, tb.y);
-      await page.waitForTimeout(450);
-      const clicked = await page.evaluate(() => {
-        const b = Array.from(document.querySelectorAll('button')).find(
-          (x) => !x.closest('nav') && (x.textContent?.trim() ?? '').startsWith('Bold'),
-        );
-        if (!b) return false;
-        (b as HTMLButtonElement).click();
-        return true;
-      });
-      expect(clicked).toBe(true);
-      await page.waitForTimeout(2500); // autosave
-      const srv = await (await request.get(`/documents/${doc.id}`)).json();
-      expect(srv.content).toContain('<strong>');
+      await page.waitForTimeout(200);
+      await page.keyboard.press('ControlOrMeta+Home');
+      await page.waitForTimeout(200);
+      await page.keyboard.down('Shift');
+      for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
+      await page.keyboard.up('Shift');
+      await page.waitForTimeout(200);
+      await page.keyboard.press('ControlOrMeta+b');
+      await page.waitForTimeout(800);
+      const applied = await page.evaluate(() => !!document.querySelector('.ProseMirror strong'));
+      expect(applied).toBe(true);
+      // Poll until server reflects the change.
+      let srv: { content: string } | null = null;
+      for (let i = 0; i < 16; i++) {
+        await page.waitForTimeout(600);
+        const res = await request.get(`${API_URL}/documents/${doc.id}`);
+        if (!res.ok()) continue;
+        try {
+          srv = (await res.json()) as { content: string };
+        } catch {
+          continue;
+        }
+        if (srv.content.includes('<strong>')) break;
+      }
+      expect(srv).not.toBeNull();
+      expect(srv!.content).toContain('<strong>');
       await page.reload();
       await page.waitForSelector('.ProseMirror', { timeout: 30000 });
       await page.waitForTimeout(2500);
@@ -199,35 +188,41 @@ test.describe('editing integrity (anti-corruption)', () => {
         };
       });
       await page.waitForTimeout(300);
-      // Top of gap -> end of previous paragraph (contains text, not start of next).
       await page.mouse.click(geom.x, geom.top);
       await page.waitForTimeout(300);
       const c1 = await caretInfo(page);
       expect(c1).toContain('off=');
       const off1 = Number(c1.split('off=')[1]);
       expect(off1).toBeGreaterThan(10);
-      // Bottom of gap -> start of next paragraph.
       await page.mouse.click(geom.x, geom.bottom);
       await page.waitForTimeout(300);
       expect(await caretInfo(page)).toContain('off=0');
 
-      // Click far below content (empty page area) places caret + focuses.
+      // Click in empty page area below last content (still inside .bdoc-page)
+      // places caret at document end — verified by typing appending there.
+      await page.evaluate(() => {
+        const pm = document.querySelector('.ProseMirror')!;
+        const kids = Array.from(pm.children);
+        const last = kids[kids.length - 1] as HTMLElement;
+        last.scrollIntoView({ block: 'center' });
+      });
+      await page.waitForTimeout(300);
       const pt = await page.evaluate(() => {
         const pm = document.querySelector('.ProseMirror')!;
         const kids = Array.from(pm.children);
         const last = kids[kids.length - 1] as HTMLElement;
         const r = last.getBoundingClientRect();
-        return { x: r.left + 100, y: r.bottom + 250 };
+        return { x: r.left + 100, y: r.bottom + 120 };
       });
       await page.mouse.click(pt.x, pt.y);
-      await page.waitForTimeout(400);
-      const focused = await page.evaluate(
-        () => document.activeElement?.className.includes('ProseMirror') ?? false,
-      );
-      expect(focused).toBe(true);
-      await page.keyboard.type(' APPENDED', { delay: 20 });
       await page.waitForTimeout(500);
-      expect(await editorText(page)).toContain('APPENDED');
+      const beforeText = await editorText(page);
+      await page.keyboard.type(' APPENDED', { delay: 20 });
+      await page.waitForTimeout(800);
+      const after = await editorText(page);
+      expect(after).toContain('APPENDED');
+      // Must be near the end (allow ~100 chars tolerance for last paragraph padding).
+      expect(after.indexOf('APPENDED')).toBeGreaterThan(beforeText.length - 100);
       expect(await sheetCount(page)).toBeGreaterThanOrEqual(1);
     } finally {
       await doc.dispose();
