@@ -541,6 +541,7 @@ export default function NavbarComponent({
                 children: [
                   { key: 'bl', label: 'Bulleted list', icon: <FaListUl />, checked: editor.isActive('bulletList'), action: () => { editor.chain().focus().toggleBulletList().run(); closeMenu(); } },
                   { key: 'nl', label: 'Numbered list', icon: <FaListOl />, checked: editor.isActive('orderedList'), action: () => { editor.chain().focus().toggleOrderedList().run(); closeMenu(); } },
+                  { key: 'cl', label: 'Checklist', checked: editor.isActive('taskList'), action: () => { editor.chain().focus().toggleTaskList().run(); closeMenu(); } },
                 ],
               },
               {

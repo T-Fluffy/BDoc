@@ -19,6 +19,8 @@ import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
 import { FaSpinner } from 'react-icons/fa';
 import AppLayout from '../layout/AppLayout';
 import { Toolbar } from '../components/Toolbar';
@@ -27,6 +29,7 @@ import HeaderFooterDialog from '../components/HeaderFooterDialog';
 import FindReplaceDialog from '../components/FindReplaceDialog';
 import WordCountDialog from '../components/WordCountDialog';
 import HelpDialog from '../components/HelpDialog';
+import TableContextMenu from '../components/TableContextMenu';
 import { getDocument, updateDocument } from '../../application/services/documentService';
 import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
 import { useDocuments } from '../../application/usecases/useDocument';
@@ -229,6 +232,8 @@ const extensions = [
   Link.configure({ openOnClick: false }),
   Subscript,
   Superscript,
+  TaskList.configure({ itemTypeName: 'taskItem' }),
+  TaskItem.configure({ nested: true }),
   PageBreak,
 ];
 
@@ -259,6 +264,7 @@ export default function EditorPage() {
   const [findOpen, setFindOpen] = useState(false);
   const [wordCountOpen, setWordCountOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [wordCount, setWordCount] = useState(0);
@@ -734,6 +740,7 @@ export default function EditorPage() {
     content: '<p></p>',
     immediatelyRender: false,
     editorProps: {
+      // Native spell checking (OS/browser dictionaries) — the Word-style red squiggles.
       // Tab advances the caret to the next tab stop of the current block by
       // inserting spaces (industry-standard web-editor behavior); exact stop
       // rendering is honored on Word export. Inside tables, Tab keeps its
@@ -835,6 +842,8 @@ export default function EditorPage() {
   // Track IME composition to avoid paginating during active composition
   useEffect(() => {
     if (!editor) return;
+    // Native spellcheck (Word-style red squiggles via OS/browser dictionaries).
+    editor.view.dom.setAttribute('spellcheck', 'true');
     const view = editor.view;
     const dom = view.dom;
     const onCompositionStart = () => { isComposingRef.current = true; };
@@ -845,6 +854,21 @@ export default function EditorPage() {
       dom.removeEventListener('compositionstart', onCompositionStart);
       dom.removeEventListener('compositionend', onCompositionEnd);
     };
+  }, [editor]);
+
+  // Right-click inside a table opens the table context menu (Docs-style);
+  // elsewhere the native menu is left alone.
+  useEffect(() => {
+    if (!editor) return;
+    const pm = editor.view.dom as HTMLElement;
+    const onCtx = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || typeof t.closest !== 'function' || !t.closest('table')) return;
+      e.preventDefault();
+      setTableMenu({ x: e.clientX, y: e.clientY });
+    };
+    pm.addEventListener('contextmenu', onCtx);
+    return () => pm.removeEventListener('contextmenu', onCtx);
   }, [editor]);
 
   // Refresh the static print snapshot before printing.
@@ -1418,6 +1442,14 @@ export default function EditorPage() {
         <WordCountDialog editor={editor} pageCount={pageCount} onClose={() => setWordCountOpen(false)} />
       )}
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
+      {tableMenu && editor && (
+        <TableContextMenu
+          editor={editor}
+          x={tableMenu.x}
+          y={tableMenu.y}
+          onClose={() => setTableMenu(null)}
+        />
+      )}
     </AppLayout>
   );
 }
