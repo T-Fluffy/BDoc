@@ -31,6 +31,9 @@ interface AppLayoutProps {
   title?: string;
   onTitleChange?: (value: string) => void;
   titleStatus?: ReactNode;
+  onImageUpload?: () => void;
+  onInsertToc?: () => void;
+  onAddComment?: () => void;
 }
 
 export default function AppLayout({
@@ -58,6 +61,9 @@ export default function AppLayout({
   title,
   onTitleChange,
   titleStatus,
+  onImageUpload,
+  onInsertToc,
+  onAddComment,
 }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -92,10 +98,13 @@ export default function AppLayout({
         title={title}
         onTitleChange={onTitleChange}
         titleStatus={titleStatus}
+        onImageUpload={onImageUpload}
+        onInsertToc={onInsertToc}
+        onAddComment={onAddComment}
       />
 
       <div className="flex-1 flex min-h-0">
-        {isEditing && <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+        {isEditing && <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} editor={editor} />}
 
         <main className="app-main flex-1 relative overflow-y-auto overflow-x-hidden min-w-0">
           {children}

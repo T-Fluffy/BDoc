@@ -3,12 +3,16 @@ import { FaFileAlt, FaPlus, FaTimes, FaWindowClose } from 'react-icons/fa';
 import { useDocuments } from '../../application/usecases/useDocument';
 import { useState } from 'react';
 
+import type { Editor } from '@tiptap/react';
+import OutlinePanel from './OutlinePanel';
+
 interface Props {
   open: boolean;
   onClose: () => void;
+  editor?: Editor | null;
 }
 
-export default function Sidebar({ open, onClose }: Props) {
+export default function Sidebar({ open, onClose, editor }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const { documents, loading, create, remove } = useDocuments();
@@ -65,6 +69,12 @@ export default function Sidebar({ open, onClose }: Props) {
             </button>
           </div>
         </div>
+
+        {isEditing && editor && (
+          <div className="border-b border-[var(--border)] mb-2 pb-2">
+            <OutlinePanel editor={editor} />
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1">
           {loading && (

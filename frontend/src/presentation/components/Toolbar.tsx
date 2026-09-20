@@ -29,6 +29,7 @@ interface ToolbarProps {
   zoom?: number;
   onZoomChange?: (next: number) => void;
   onPrint?: () => void;
+  onImageUpload?: () => void;
 }
 
 interface ToolbarButtonProps {
@@ -68,7 +69,7 @@ const LINE_QUICK: { label: string; value: string }[] = [
   { label: 'Double', value: '2' },
 ];
 
-export function Toolbar({ editor, zoom, onZoomChange, onPrint }: ToolbarProps) {
+export function Toolbar({ editor, zoom, onZoomChange, onPrint, onImageUpload }: ToolbarProps) {
   // Re-render on every editor transaction/selection change so active states
   // and dropdown values never go stale (EditorPage itself rarely re-renders).
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
@@ -97,6 +98,10 @@ export function Toolbar({ editor, zoom, onZoomChange, onPrint }: ToolbarProps) {
   };
 
   const promptImage = () => {
+    if (onImageUpload) {
+      onImageUpload();
+      return;
+    }
     const url = window.prompt('Enter image URL');
     if (url) editor.chain().focus().setImage({ src: url }).run();
   };

@@ -9,7 +9,9 @@ import StarterKit from '@tiptap/starter-kit';
 import Paragraph from '@tiptap/extension-paragraph';
 import Heading from '@tiptap/extension-heading';
 import Image from '@tiptap/extension-image';
+import { ReactNodeViewRenderer } from '@tiptap/react';
 import { TableKit } from '@tiptap/extension-table';
+import ResizableImageView from '../components/ResizableImageView';
 import { TextStyle } from '@tiptap/extension-text-style';
 import FontFamily from '@tiptap/extension-font-family';
 import Color from '@tiptap/extension-color';
@@ -21,6 +23,7 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
+import { CommentMark } from '../components/CommentMark';
 import { FaSpinner } from 'react-icons/fa';
 import AppLayout from '../layout/AppLayout';
 import { Toolbar } from '../components/Toolbar';
@@ -184,6 +187,19 @@ function stripPageBreaks(html: string): string {
   return div.innerHTML;
 }
 
+function stripCommentsForExport(html: string): string {
+  if (typeof document === 'undefined') return html;
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('span[data-comment]').forEach((el) => {
+    const parent = el.parentNode;
+    if (!parent) return;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    parent.removeChild(el);
+  });
+  return div.innerHTML;
+}
+
 let spaceCanvas: HTMLCanvasElement | null = null;
 
 /** Width of a space in the caret's own font (layout px), for Tab advances. */
@@ -221,7 +237,28 @@ const extensions = [
   StarterKit.configure({ heading: false, paragraph: false }),
   ParagraphSpacing,
   HeadingSpacing.configure({ levels: [1, 2, 3, 4, 5, 6] }),
-  Image,
+  Image.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        width: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.getAttribute('width') || (el as HTMLImageElement).style.width || null,
+          renderHTML: (attrs: Record<string, unknown>) =>
+            attrs.width ? { style: `width: ${attrs.width}` } : {},
+        },
+        align: {
+          default: null,
+          parseHTML: (el: HTMLElement) => el.dataset.align ?? null,
+          renderHTML: (attrs: Record<string, unknown>) =>
+            attrs.align ? { 'data-align': attrs.align as string } : {},
+        },
+      };
+    },
+    addNodeView() {
+      return ReactNodeViewRenderer(ResizableImageView);
+    },
+  }),
   TableKit.configure({ table: { resizable: true } }),
   TextStyleExt,
   FontFamily,
@@ -234,6 +271,7 @@ const extensions = [
   Superscript,
   TaskList.configure({ itemTypeName: 'taskItem' }),
   TaskItem.configure({ nested: true }),
+  CommentMark,
   PageBreak,
 ];
 
@@ -276,6 +314,7 @@ export default function EditorPage() {
   const zoomRef = useRef<number>(1);
   const breaksRef = useRef<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
@@ -939,6 +978,49 @@ export default function EditorPage() {
     return () => stack.removeEventListener('mousedown', onMouseDown);
   }, [editor, loading, document?.id]);
 
+  // Comment click: resolve/remove on click of highlighted span.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom as HTMLElement;
+    const onClick = (e: MouseEvent) => {
+      const span = (e.target as HTMLElement).closest('span[data-comment]') as HTMLElement | null;
+      if (!span) return;
+      const text = span.getAttribute('data-comment-text') || '';
+      const id = span.getAttribute('data-comment-id');
+      if (!id) return;
+      if (window.confirm(`Comment: "${text}"\n\nOK to remove, Cancel to keep.`)) {
+        const { state, view } = editor;
+        let from = -1;
+        let to = -1;
+        state.doc.descendants((node, pos) => {
+          if (from !== -1) return false;
+          const mark = node.marks.find((m) => m.type.name === 'comment' && (m.attrs as { id: string }).id === id);
+          if (mark) {
+            from = pos;
+            // Find continuous range with same comment id
+            let end = pos + node.nodeSize;
+            state.doc.nodesBetween(pos, state.doc.content.size, (n, p) => {
+              if (p < pos) return true;
+              if (p > end) return false;
+              const mm = n.marks.find((m) => m.type.name === 'comment' && (m.attrs as { id: string }).id === id);
+              if (mm && n.isText) end = p + n.nodeSize;
+              return true;
+            });
+            to = end;
+            return false;
+          }
+          return true;
+        });
+        if (from !== -1) {
+          view.dispatch(state.tr.removeMark(from, to, state.schema.marks.comment));
+          view.focus();
+        }
+      }
+    };
+    dom.addEventListener('click', onClick);
+    return () => dom.removeEventListener('click', onClick);
+  }, [editor]);
+
   // Re-paginate when async resources settle: fonts, full page load, and
   // images change block heights without firing any editor transaction.
   useEffect(() => {
@@ -1200,6 +1282,53 @@ export default function EditorPage() {
     };
   }, [pageSettings]);
 
+  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !editor) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = reader.result as string;
+      editor.chain().focus().setImage({ src }).run();
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleInsertToc = () => {
+    if (!editor) return;
+    const entries: { level: number; text: string }[] = [];
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'heading' && node.textContent.trim()) {
+        entries.push({ level: node.attrs.level as number, text: node.textContent.slice(0, 80) });
+      }
+    });
+    if (entries.length === 0) {
+      editor.chain().focus().insertContent('<p><em>Table of Contents — No headings found.</em></p>').run();
+      return;
+    }
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let html = '<div data-toc="true" style="border:1px solid var(--border);padding:12px;border-radius:8px;background:var(--surface-2);margin:12px 0;"><p><strong>Table of Contents</strong></p><ul>';
+    entries.forEach((e) => {
+      const indent = (e.level - 1) * 16;
+      html += `<li style="margin-left:${indent}px">${esc(e.text)}</li>`;
+    });
+    html += '</ul></div>';
+    editor.chain().focus().insertContent(html).run();
+  };
+
+  const handleAddComment = () => {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) {
+      window.alert('Select text to comment on.');
+      return;
+    }
+    const text = window.prompt('Comment:');
+    if (text === null || text.trim() === '') return;
+    const id = crypto.randomUUID();
+    editor.chain().focus().setMark('comment', { id, text: text.trim(), author: 'You', resolved: false }).run();
+  };
+
   const handleImport = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -1233,7 +1362,7 @@ export default function EditorPage() {
       await exportDocumentToDocx({
         ...fresh,
         title: titleRef.current,
-        content: stripPageBreaks(fresh.content || ''),
+        content: stripCommentsForExport(stripPageBreaks(fresh.content || '')),
       });
     } catch {
       window.alert('Could not export the document.');
@@ -1296,6 +1425,8 @@ export default function EditorPage() {
       onFindReplace={() => setFindOpen(true)}
       onWordCount={() => setWordCountOpen(true)}
       onHelp={() => setHelpOpen(true)}
+      onAddComment={handleAddComment}
+      onInsertToc={handleInsertToc}
       title={title}
       onTitleChange={handleTitleChange}
       titleStatus={
@@ -1304,6 +1435,7 @@ export default function EditorPage() {
           {statusLabel}
         </span>
       }
+      onImageUpload={() => imageInputRef.current?.click()}
     >
       <input
         ref={fileInputRef}
@@ -1312,13 +1444,20 @@ export default function EditorPage() {
         className="hidden"
         onChange={handleImport}
       />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageUpload}
+      />
       <div className="editor-workspace flex h-full min-h-full flex-col overflow-hidden">
         <div className="bdoc-scroll min-h-0 flex-1 overflow-auto pb-16">
         <div className="mx-auto flex flex-col items-stretch" style={{ width: `${pageW}mm` }}>
           {/* Toolbar */}
           <div className="sticky top-0 z-50 pt-2 pb-4 bg-gradient-to-b from-workspace via-workspace/95 to-transparent no-print">
             <div className="px-4">
-              <Toolbar editor={editor} zoom={zoom} onZoomChange={handleZoomChange} onPrint={() => window.print()} />
+              <Toolbar editor={editor} zoom={zoom} onZoomChange={handleZoomChange} onPrint={() => window.print()} onImageUpload={() => imageInputRef.current?.click()} />
             </div>
             {showRuler && (
               <Ruler editor={editor} pageWidthMm={pageW} marginMm={pageM} onMarginChange={handleMarginChange} />

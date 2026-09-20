@@ -67,6 +67,9 @@ interface NavbarProps {
   title?: string;
   onTitleChange?: (value: string) => void;
   titleStatus?: ReactNode;
+  onImageUpload?: () => void;
+  onInsertToc?: () => void;
+  onAddComment?: () => void;
 }
 
 export default function NavbarComponent({
@@ -95,6 +98,9 @@ export default function NavbarComponent({
   title,
   onTitleChange,
   titleStatus,
+  onImageUpload,
+  onInsertToc,
+  onAddComment,
 }: NavbarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -115,8 +121,12 @@ export default function NavbarComponent({
   const closeMenu = () => setMenu(null);
 
   const addImage = () => {
-    const url = window.prompt('Enter image URL');
-    if (url && editor) editor.chain().focus().setImage({ src: url }).run();
+    if (onImageUpload) {
+      onImageUpload();
+    } else {
+      const url = window.prompt('Enter image URL');
+      if (url && editor) editor.chain().focus().setImage({ src: url }).run();
+    }
     closeMenu();
   };
 
@@ -487,6 +497,8 @@ export default function NavbarComponent({
                 : []),
               { key: 'pnum', label: 'Page numbers', checked: pnChecked, keepOpen: true, action: togglePageNumbers },
               { key: 'pbreak', label: 'Page break', action: insertUserBreak },
+              ...(onInsertToc ? [{ key: 'toc', label: 'Table of contents', action: () => { onInsertToc(); closeMenu(); } }] : []),
+              ...(onAddComment ? [{ key: 'comment', label: 'Comment', action: () => { onAddComment(); closeMenu(); } }] : []),
             ]}
           />
         )}
