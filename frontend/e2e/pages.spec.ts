@@ -4,6 +4,7 @@ import {
   breakCount,
   createDoc,
   editorText,
+  getTestToken,
   login,
   noTextInGaps,
   openEditor,
@@ -104,7 +105,7 @@ test.describe('page features', () => {
       let st: { margins: string; customMarginMm: number } | null = null;
       for (let i = 0; i < 12; i++) {
         await page.waitForTimeout(600);
-        const res = await request.get(`${API_URL}/documents/${doc.id}`);
+        const res = await request.get(`${API_URL}/documents/${doc.id}`, { headers: { Authorization: `Bearer ${await getTestToken(request)}` } });
         if (!res.ok()) continue;
         try {
           const srv = (await res.json()) as { settings: string };
@@ -146,7 +147,7 @@ test.describe('page features', () => {
         });
         for (let i = 0; i < 12; i++) {
           await page.waitForTimeout(600);
-          const res = await request.get(`${API_URL}/documents/${doc.id}`);
+          const res = await request.get(`${API_URL}/documents/${doc.id}`, { headers: { Authorization: `Bearer ${await getTestToken(request)}` } });
           if (!res.ok()) continue;
           try {
             const srv = (await res.json()) as { settings: string };
@@ -201,7 +202,7 @@ test.describe('page features', () => {
       );
       expect(parseFloat(indent)).toBeGreaterThan(0);
       await page.waitForTimeout(2000);
-      const res = await request.get(`${API_URL}/documents/${doc.id}`);
+      const res = await request.get(`${API_URL}/documents/${doc.id}`, { headers: { Authorization: `Bearer ${await getTestToken(request)}` } });
       expect(res.ok()).toBeTruthy();
       const srv = (await res.json()) as { content: string };
       expect(srv.content).toContain('text-indent');

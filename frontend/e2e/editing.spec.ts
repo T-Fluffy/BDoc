@@ -5,6 +5,7 @@ import {
   caretInfo,
   createDoc,
   editorText,
+  getTestToken,
   login,
   noTextInGaps,
   openEditor,
@@ -144,7 +145,8 @@ test.describe('editing integrity (anti-corruption)', () => {
       let srv: { content: string } | null = null;
       for (let i = 0; i < 16; i++) {
         await page.waitForTimeout(600);
-        const res = await request.get(`${API_URL}/documents/${doc.id}`);
+        const headers = { Authorization: `Bearer ${await getTestToken(request)}` };
+        const res = await request.get(`${API_URL}/documents/${doc.id}`, { headers });
         if (!res.ok()) continue;
         try {
           srv = (await res.json()) as { content: string };

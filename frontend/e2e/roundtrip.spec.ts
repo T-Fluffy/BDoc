@@ -1,6 +1,6 @@
 import AdmZip from 'adm-zip';
 import { test, expect } from '@playwright/test';
-import { API_URL, createDoc, login, openEditor, sheetCount } from './helpers';
+import { API_URL, createDoc, getTestToken, login, openEditor, sheetCount } from './helpers';
 
 const HF_SETTINGS = JSON.stringify({
   size: 'A4',
@@ -17,7 +17,9 @@ const HF_SETTINGS = JSON.stringify({
 });
 
 async function exportDocx(request: import('@playwright/test').APIRequestContext, id: string): Promise<Buffer> {
-  const res = await request.get(`${API_URL}/documents/${id}/export`);
+  const res = await request.get(`${API_URL}/documents/${id}/export`, {
+    headers: { Authorization: `Bearer ${await getTestToken(request)}` },
+  });
   expect(res.ok()).toBeTruthy();
   expect(res.headers()['content-type']).toContain(
     'officedocument.wordprocessingml.document',
@@ -215,13 +217,13 @@ test.describe('docx round-trip', () => {
       expect(newId).not.toBe(seed.id);
       await page.waitForSelector('.ProseMirror', { timeout: 30000 });
       await page.waitForTimeout(3000);
-      const doc = await (await request.get(`${API_URL}/documents/${newId}`)).json();
+      const doc = await (await request.get(`${API_URL}/documents/${newId}`, { headers: { Authorization: `Bearer ${await getTestToken(request)}` } })).json();
       expect(doc.content).toContain('Tabbed names row here.');
       expect(doc.content).toContain('data-tab-stops="25,50"');
       // Source doc untouched by the import.
-      const seedDoc = await (await request.get(`${API_URL}/documents/${seed.id}`)).json();
+      const seedDoc = await (await request.get(`${API_URL}/documents/${seed.id}`, { headers: { Authorization: `Bearer ${await getTestToken(request)}` } })).json();
       expect(seedDoc.content).toBe('<p>seed</p>');
-      await request.delete(`${API_URL}/documents/${newId}`).catch(() => undefined);
+      await request.delete(`${API_URL}/documents/${newId}`, { headers: { Authorization: `Bearer ${await getTestToken(request)}` } }).catch(() => undefined);
     } finally {
       await seed.dispose();
     }

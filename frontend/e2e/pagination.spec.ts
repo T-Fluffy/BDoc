@@ -4,6 +4,7 @@ import {
   bulletList,
   breakCount,
   createDoc,
+  getTestToken,
   login,
   noTextInGaps,
   openEditor,
@@ -124,7 +125,7 @@ test.describe('pagination engine', () => {
       expect(await sheetCount(page)).toBe(1);
       expect(await statusBar(page)).toContain('Page 1 of 1');
 
-      await request.delete(`${API_URL}/documents/${newId}`).catch(() => undefined);
+      await request.delete(`${API_URL}/documents/${newId}`, { headers: { Authorization: `Bearer ${await getTestToken(request)}` } }).catch(() => undefined);
     } finally {
       await big.dispose();
     }

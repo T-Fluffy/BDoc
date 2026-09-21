@@ -1,8 +1,18 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 
-const AUTH_KEY = 'bdoc-auth';
 const TOKEN_KEY = 'bdoc-token';
 const EMAIL_KEY = 'bdoc-email';
+
+function isTokenValid(t: string | null): boolean {
+  if (!t) return false;
+  try {
+    const payload = JSON.parse(atob(t.split('.')[1]));
+    if (payload.exp && Date.now() >= payload.exp * 1000) return false;
+    return true;
+  } catch {
+    return !!t;
+  }
+}
 
 interface AuthValue {
   isLogged: boolean;
@@ -16,21 +26,29 @@ interface AuthValue {
 const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isLogged, setIsLogged] = useState(
-    () => !!localStorage.getItem(TOKEN_KEY) || localStorage.getItem(AUTH_KEY) === 'true',
-  );
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [isLogged, setIsLogged] = useState(() => isTokenValid(localStorage.getItem(TOKEN_KEY)));
+  const [token, setToken] = useState<string | null>(() => {
+    const t = localStorage.getItem(TOKEN_KEY);
+    return isTokenValid(t) ? t : null;
+  });
   const [email, setEmail] = useState<string | null>(() => localStorage.getItem(EMAIL_KEY));
 
+  // Strict token-only auth (legacy bdoc-auth flag ignored).
   const setLogged = (value: boolean) => {
-    setIsLogged(value);
-    localStorage.setItem(AUTH_KEY, String(value));
+    if (!value) {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(EMAIL_KEY);
+      setToken(null);
+      setEmail(null);
+      setIsLogged(false);
+    } else {
+      setIsLogged(true);
+    }
   };
 
   const setAuth = (newToken: string, newEmail: string) => {
     localStorage.setItem(TOKEN_KEY, newToken);
     localStorage.setItem(EMAIL_KEY, newEmail);
-    localStorage.setItem(AUTH_KEY, 'true');
     setToken(newToken);
     setEmail(newEmail);
     setIsLogged(true);
@@ -39,7 +57,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(EMAIL_KEY);
-    localStorage.removeItem(AUTH_KEY);
     setToken(null);
     setEmail(null);
     setIsLogged(false);

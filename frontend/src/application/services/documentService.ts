@@ -16,10 +16,13 @@ axios.interceptors.request.use((config) => {
 axios.interceptors.response.use(
   (r) => r,
   (error) => {
-    if (error?.response?.status === 401) {
+    const status = error?.response?.status;
+    if (status === 401 || status === 403) {
       localStorage.removeItem('bdoc-token');
       localStorage.removeItem('bdoc-email');
-      // Let the UI's auth guard redirect to /login on next render.
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   },

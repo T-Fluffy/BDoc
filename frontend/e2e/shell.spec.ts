@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { createDoc, login, openEditor, openMenu, paras, sheetCount } from './helpers';
+import {test, expect } from '@playwright/test';
+import {createDoc, login, openEditor, openMenu, paras, sheetCount, getTestToken} from './helpers';
 
 test.describe('app shell', () => {
   test('menu row exposes all seven menus', async ({ page, request }) => {

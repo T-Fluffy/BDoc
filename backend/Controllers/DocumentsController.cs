@@ -9,6 +9,7 @@ namespace BDoc.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class DocumentsController : ControllerBase
 {
     private readonly IDocumentRepository _repository;
@@ -26,17 +27,18 @@ public class DocumentsController : ControllerBase
 
     private bool CanAccess(Document doc)
     {
-        // Transitional: allow all for now to keep E2E green while auth is being rolled out.
-        // Next iteration will enforce per-user isolation once frontend always sends tokens.
-        return true;
+        var uid = CurrentUserId();
+        if (uid is null) return false;
+        if (doc.OwnerId is null) return true; // legacy docs
+        return doc.OwnerId == uid;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
         var uid = CurrentUserId();
+        if (uid is null) return Unauthorized();
         var all = await _repository.GetAllAsync();
-        if (uid is null) return Ok(all);
         var mine = all.Where(d => d.OwnerId == uid || d.OwnerId == null);
         return Ok(mine);
     }
@@ -60,7 +62,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Create(Document doc)
     {
         var uid = CurrentUserId();
-        doc.OwnerId = uid; // null for anonymous (legacy)
+        doc.OwnerId = uid;
         await _repository.CreateAsync(doc);
         return CreatedAtAction(nameof(Get), new { id = doc.Id }, doc);
     }
