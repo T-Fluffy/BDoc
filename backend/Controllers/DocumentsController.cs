@@ -29,7 +29,6 @@ public class DocumentsController : ControllerBase
     {
         var uid = CurrentUserId();
         if (uid is null) return false;
-        if (doc.OwnerId is null) return true; // legacy docs
         return doc.OwnerId == uid;
     }
 
@@ -39,7 +38,7 @@ public class DocumentsController : ControllerBase
         var uid = CurrentUserId();
         if (uid is null) return Unauthorized();
         var all = await _repository.GetAllAsync();
-        var mine = all.Where(d => d.OwnerId == uid || d.OwnerId == null);
+        var mine = all.Where(d => d.OwnerId == uid);
         return Ok(mine);
     }
 
@@ -62,6 +61,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Create(Document doc)
     {
         var uid = CurrentUserId();
+        if (uid is null) return Unauthorized();
         doc.OwnerId = uid;
         await _repository.CreateAsync(doc);
         return CreatedAtAction(nameof(Get), new { id = doc.Id }, doc);
