@@ -48,6 +48,8 @@ interface NavbarProps {
   onNew?: () => void;
   onImport?: () => void;
   onExport?: () => void;
+  onImportMarkdown?: () => void;
+  onExportMarkdown?: () => void;
   onPrint?: () => void;
   onCloseDocument?: () => void;
   exporting?: boolean;
@@ -82,6 +84,8 @@ export default function NavbarComponent({
   onNew,
   onImport,
   onExport,
+  onImportMarkdown,
+  onExportMarkdown,
   onPrint,
   onCloseDocument,
   exporting,
@@ -220,11 +224,15 @@ export default function NavbarComponent({
   const fileOptions = [
     { label: 'New', icon: <FaPlus />, action: () => { onNew?.(); closeMenu(); }, hide: false },
     { label: 'Import Word document (.docx)', icon: importing ? <FaSpinner className="animate-spin" /> : <FaFileImport />, action: () => { onImport?.(); closeMenu(); }, hide: false },
+    ...(onImportMarkdown ? [{ label: 'Import Markdown (.md)', icon: <FaFileImport />, action: () => { onImportMarkdown(); closeMenu(); }, hide: false }] : []),
     { label: 'Download as Word document (.docx)', icon: exporting ? <FaSpinner className="animate-spin" /> : <FaFileWord />, action: () => { onExport?.(); closeMenu(); }, hide: false },
+    ...(onExportMarkdown ? [{ label: 'Download as Markdown (.md)', icon: <FaFileWord />, action: () => { onExportMarkdown(); closeMenu(); }, hide: false }] : []),
     { label: 'Print / Export to PDF', icon: <FaPrint />, action: () => { onPrint?.(); closeMenu(); }, hide: false },
     { label: 'divider', icon: null, action: () => {}, hide: false },
     { label: 'Close document', icon: <FaTimesCircle />, action: () => { onCloseDocument?.(); closeMenu(); }, hide: false },
   ];
+
+  const libraryLabels = ['New', 'Import Word document (.docx)', 'Import Markdown (.md)'];
 
   const handleLogout = () => {
     logout();
@@ -364,7 +372,7 @@ export default function NavbarComponent({
           onOpen={() => setMenu('file')}
           onClose={closeMenu}
           items={fileOptions
-            .filter((opt) => isEditing || ['New', 'Import Word document (.docx)'].includes(opt.label))
+            .filter((opt) => isEditing || libraryLabels.includes(opt.label))
             .map((opt) =>
               opt.label === 'divider'
                 ? { key: 'file-div', divider: true }

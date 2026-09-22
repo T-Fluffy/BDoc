@@ -29,6 +29,7 @@ A full-stack, Google-Docs-style document editor with a customizable dark-first U
 
 - **Rich-text editing** (TipTap v3): headings, bold/italic/underline/strike, inline code, highlight, text color, lists, quotes, code blocks, tables, images, links, and alignment.
 - **Word compatibility** — import `.docx` files and export documents as `.docx` (HTML ↔ OpenXML on the server). Import preserves fonts, font sizes, colors, highlight, bold/italic/underline/strike, alignment, nested lists, tables, images and links — ready for Microsoft Word / LibreOffice.
+- **Markdown** — import `.md` files and export documents as GitHub-flavored Markdown (headings, bold/italic/strike, lists incl. tasks, tables, code, quotes, links, page breaks).
 - **File menu** — a Word-style `File` menu in the header with New, Import Word, Download as Word, Print / Export to PDF and Close document.
 - **Paragraph format** — per-paragraph line spacing, space before / after, left indent and first-line indent from a toolbar dropdown.
 - **Page format** — a `Page` menu in the header sets paper size (A5/A4/A3/A2/A1), orientation (portrait/landscape) and margins (narrow/normal/wide). The document is rendered as discrete, paginated paper sheets sized to the chosen format (content flows across visible page breaks). Settings persist per document and are applied to the Word export.
@@ -100,5 +101,5 @@ npm run dev                 # http://localhost:5173 (proxies /api -> localhost:8
 ## 🗺️ Roadmap
 
 - ~~JWT-based authentication~~ ✅ done (register/login, per-user document isolation)
+- ~~Markdown import/export~~ ✅ done
 - Real-time collaboration (SignalR) & live cursors
-- Markdown import/export

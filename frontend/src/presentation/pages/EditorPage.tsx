@@ -37,6 +37,7 @@ import HelpDialog from '../components/HelpDialog';
 import TableContextMenu from '../components/TableContextMenu';
 import { getDocument, updateDocument, getAccessLevel } from '../../application/services/documentService';
 import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
+import { exportDocumentToMarkdown, importDocumentFromMarkdown } from '../../application/services/markdownService';
 import { useDocuments } from '../../application/usecases/useDocument';
 import type { Document } from '../../domain/models/DocumentModel';
 import {
@@ -320,6 +321,7 @@ export default function EditorPage() {
   const zoomRef = useRef<number>(1);
   const breaksRef = useRef<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mdFileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
@@ -1458,6 +1460,24 @@ export default function EditorPage() {
     }
   };
 
+  const handleImportMarkdown = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImporting(true);
+    try {
+      const { html } = await importDocumentFromMarkdown(file);
+      const name = file.name.replace(/\.md$/i, '').replace(/\.markdown$/i, '') || 'Imported document';
+      const doc = await create(name);
+      await updateDocument({ ...doc, title: name, content: html || '<p></p>' });
+      navigate(`/editor/${doc.id}`);
+    } catch {
+      window.alert('Could not import this Markdown document.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const handleExport = async () => {
     const doc = docRef.current;
     if (!doc) return;
@@ -1470,6 +1490,20 @@ export default function EditorPage() {
         title: titleRef.current,
         content: stripCommentsForExport(stripPageBreaks(fresh.content || '')),
       });
+    } catch {
+      window.alert('Could not export the document.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportMarkdown = async () => {
+    const doc = docRef.current;
+    if (!doc) return;
+    setExporting(true);
+    try {
+      await save();
+      await exportDocumentToMarkdown({ id: doc.id, title: titleRef.current });
     } catch {
       window.alert('Could not export the document.');
     } finally {
@@ -1515,6 +1549,8 @@ export default function EditorPage() {
       onNew={handleNew}
       onImport={() => fileInputRef.current?.click()}
       onExport={handleExport}
+      onImportMarkdown={() => mdFileInputRef.current?.click()}
+      onExportMarkdown={handleExportMarkdown}
       onPrint={() => window.print()}
       onCloseDocument={handleClose}
       exporting={exporting}
@@ -1552,6 +1588,13 @@ export default function EditorPage() {
         accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         className="hidden"
         onChange={handleImport}
+      />
+      <input
+        ref={mdFileInputRef}
+        type="file"
+        accept=".md,.markdown,text/markdown"
+        className="hidden"
+        onChange={handleImportMarkdown}
       />
       <input
         ref={imageInputRef}

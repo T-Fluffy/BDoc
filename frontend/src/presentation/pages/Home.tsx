@@ -6,6 +6,7 @@ import AppLayout from '../layout/AppLayout';
 import { useDocuments } from '../../application/usecases/useDocument';
 import { importDocumentFromDocx } from '../../application/services/docxService';
 import { createDocument, updateDocument } from '../../application/services/documentService';
+import { importDocumentFromMarkdown } from '../../application/services/markdownService';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -25,6 +26,7 @@ export default function Home() {
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mdFileInputRef = useRef<HTMLInputElement>(null);
   const { documents, loading, error, create, remove } = useDocuments();
 
   const filteredDocs = documents.filter((doc) =>
@@ -64,8 +66,26 @@ export default function Home() {
     }
   };
 
+  const handleImportMarkdown = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImporting(true);
+    try {
+      const { html } = await importDocumentFromMarkdown(file);
+      const name = file.name.replace(/\.md$/i, '').replace(/\.markdown$/i, '') || 'Imported document';
+      const doc = await createDocument(name);
+      await updateDocument({ ...doc, content: html || '<p></p>', title: name });
+      navigate(`/editor/${doc.id}`);
+    } catch {
+      window.alert('Could not import this Markdown document.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
-    <AppLayout onNew={handleCreate} onImport={() => fileInputRef.current?.click()} importing={importing}>
+    <AppLayout onNew={handleCreate} onImport={() => fileInputRef.current?.click()} onImportMarkdown={() => mdFileInputRef.current?.click()} importing={importing}>
       <div className="max-w-7xl mx-auto px-6 py-10">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
@@ -172,6 +192,7 @@ export default function Home() {
         )}
       </div>
       <input ref={fileInputRef} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={handleImport} />
+      <input ref={mdFileInputRef} type="file" accept=".md,.markdown,text/markdown" className="hidden" onChange={handleImportMarkdown} />
     </AppLayout>
   );
 }

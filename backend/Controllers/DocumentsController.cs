@@ -134,6 +134,28 @@ public class DocumentsController : ControllerBase
         return Ok(new { html = result.Html, settings = result.SettingsJson });
     }
 
+    [HttpGet("{id}/export/markdown")]
+    public async Task<IActionResult> ExportMarkdown(Guid id)
+    {
+        var doc = await _repository.GetByIdAsync(id);
+        if (await AccessLevelAsync(doc, CurrentUserId()) is null) return Forbid();
+        var md = MarkdownService.ToMarkdown(doc.Content);
+        return File(
+            System.Text.Encoding.UTF8.GetBytes(md),
+            "text/markdown",
+            $"{DocxService.SanitizeFileName(doc.Title)}.md");
+    }
+
+    [HttpPost("import/markdown")]
+    public async Task<IActionResult> ImportMarkdown(IFormFile file)
+    {
+        if (file is null || file.Length == 0) return BadRequest("No file uploaded");
+        using var reader = new StreamReader(file.OpenReadStream());
+        var markdown = await reader.ReadToEndAsync();
+        if (string.IsNullOrWhiteSpace(markdown)) return BadRequest("No file uploaded");
+        return Ok(new { html = MarkdownService.ToHtml(markdown) });
+    }
+
     [HttpGet("{id}/versions")]
     public async Task<IActionResult> GetVersions(Guid id)
     {

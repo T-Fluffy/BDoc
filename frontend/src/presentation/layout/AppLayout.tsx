@@ -12,6 +12,8 @@ interface AppLayoutProps {
   onNew?: () => void;
   onImport?: () => void;
   onExport?: () => void;
+  onImportMarkdown?: () => void;
+  onExportMarkdown?: () => void;
   onPrint?: () => void;
   onCloseDocument?: () => void;
   exporting?: boolean;
@@ -45,6 +47,8 @@ export default function AppLayout({
   onNew,
   onImport,
   onExport,
+  onImportMarkdown,
+  onExportMarkdown,
   onPrint,
   onCloseDocument,
   exporting,
@@ -85,6 +89,8 @@ export default function AppLayout({
         onNew={onNew}
         onImport={onImport}
         onExport={onExport}
+        onImportMarkdown={onImportMarkdown}
+        onExportMarkdown={onExportMarkdown}
         onPrint={onPrint}
         onCloseDocument={onCloseDocument}
         exporting={exporting}
