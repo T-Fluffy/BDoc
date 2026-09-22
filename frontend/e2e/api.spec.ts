@@ -2,6 +2,17 @@ import { test, expect } from '@playwright/test';
 import { API_URL, createDoc, getTestToken } from './helpers';
 
 test.describe('documents API contract', () => {
+  test('anonymous requests are rejected with 401', async ({ request }) => {
+    const list = await request.get(`${API_URL}/documents`);
+    expect(list.status()).toBe(401);
+    const get = await request.get(`${API_URL}/documents/00000000-0000-0000-0000-000000000000`);
+    expect(get.status()).toBe(401);
+    const create = await request.post(`${API_URL}/documents`, {
+      data: { id: crypto.randomUUID(), title: 'anon', content: '', updatedAt: new Date().toISOString() },
+    });
+    expect(create.status()).toBe(401);
+  });
+
   test('list returns an array', async ({ request }) => {
     const headers = { Authorization: `Bearer ${await getTestToken(request)}` };
     const res = await request.get(`${API_URL}/documents`, { headers });
@@ -85,7 +96,7 @@ test.describe('documents API contract', () => {
     expect(res.status()).toBe(400);
   });
 
-  test('per-user isolation: user B cannot see user A docs', async ({ request, playwright }) => {
+  test('per-user isolation: user B cannot see user A docs', async ({ request }) => {
     const headersA = { Authorization: `Bearer ${await getTestToken(request)}` };
     const docA = await createDoc(request, { title: 'E2E Private A', content: '<p>secret</p>' });
     try {

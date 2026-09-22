@@ -223,7 +223,6 @@ test.describe('app shell', () => {
 
       // Auth guard: cleared tokens redirect to login.
       await page.evaluate(() => {
-        localStorage.removeItem('bdoc-auth');
         localStorage.removeItem('bdoc-token');
         localStorage.removeItem('bdoc-email');
       });

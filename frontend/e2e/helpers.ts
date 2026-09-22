@@ -104,7 +104,7 @@ export async function createDoc(
   };
 }
 
-/** Real login via JWT (falls back to flag for local dev) and dismiss dialogs. */
+/** Real login via JWT and dismiss dialogs. */
 export async function login(page: Page, request?: APIRequestContext): Promise<void> {
   if (request) {
     const token = await getTestToken(request);
@@ -113,13 +113,11 @@ export async function login(page: Page, request?: APIRequestContext): Promise<vo
       ({ t, e }) => {
         localStorage.setItem('bdoc-token', t);
         localStorage.setItem('bdoc-email', e);
-        localStorage.setItem('bdoc-auth', 'true');
       },
       { t: token, e: TEST_EMAIL },
     );
   } else {
-    await page.goto('/login');
-    await page.evaluate(() => localStorage.setItem('bdoc-auth', 'true'));
+    throw new Error('login(page) without request is no longer supported (strict auth requires a real JWT)');
   }
   page.on('dialog', (d) => void d.dismiss().catch(() => undefined));
 }
