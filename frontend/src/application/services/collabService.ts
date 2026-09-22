@@ -12,16 +12,23 @@ export interface CursorMsg {
   to: number;
 }
 
+export interface ContentMsg {
+  documentId: string;
+  updatedAt: string;
+  byEmail: string;
+}
+
 interface Handlers {
   onPresence: (users: PresenceUser[]) => void;
   onCursor: (msg: CursorMsg) => void;
+  onContent: (msg: ContentMsg) => void;
 }
 
 /** Module-level store read by the ProseMirror decorations plugin. */
 export const remoteCursorStore: { current: CursorMsg[] } = { current: [] };
 
 const handlersRef: { current: Handlers } = {
-  current: { onPresence: () => undefined, onCursor: () => undefined },
+  current: { onPresence: () => undefined, onCursor: () => undefined, onContent: () => undefined },
 };
 
 let conn: signalR.HubConnection | null = null;
@@ -38,6 +45,7 @@ async function ensureConn(): Promise<signalR.HubConnection> {
       .build();
     conn.on('PresenceUpdated', (users: PresenceUser[]) => handlersRef.current.onPresence(users));
     conn.on('CursorMoved', (msg: CursorMsg) => handlersRef.current.onCursor(msg));
+    conn.on('ContentUpdated', (msg: ContentMsg) => handlersRef.current.onContent(msg));
     conn.onreconnected(async () => {
       if (joinedDoc && conn) {
         try {
@@ -115,6 +123,12 @@ export function sendCursor(docId: string, from: number, to: number): void {
       }
     }, 130);
   }
+}
+
+/** Tell the room our save persisted (server verifies write access). */
+export function notifySaved(docId: string): void {
+  if (!conn || conn.state !== signalR.HubConnectionState.Connected || joinedDoc !== docId) return;
+  conn.invoke('NotifySaved', docId).catch(() => undefined);
 }
 
 /** Deterministic caret color per e-mail. */

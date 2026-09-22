@@ -51,8 +51,22 @@ public class CollabHub : Hub
         {
             return false;
         }
-        if (doc.OwnerId == userId) return true;
-        return await _repository.GetShareAsync(docId, userId) is not null;
+        return await BDoc.Services.DocumentAccess.LevelAsync(_repository, doc, userId) is not null;
+    }
+
+    private async Task<bool> CanWriteAsync(Guid docId, string? uid)
+    {
+        if (uid is null || !Guid.TryParse(uid, out var userId)) return false;
+        BDoc.Domain.Entities.Document doc;
+        try
+        {
+            doc = await _repository.GetByIdAsync(docId);
+        }
+        catch
+        {
+            return false;
+        }
+        return await BDoc.Services.DocumentAccess.LevelAsync(_repository, doc, userId) is ("owner" or "editor");
     }
 
     public async Task JoinDocument(string docIdStr)
@@ -82,6 +96,30 @@ public class CollabHub : Hub
         if (!await CanReadAsync(docId, uid)) throw new HubException("Forbidden");
         var msg = new CursorUpdate(uid!, CurrentEmail(Context.User), Math.Max(0, from), Math.Max(0, to));
         await Clients.OthersInGroup(docIdStr).SendAsync("CursorMoved", msg);
+    }
+
+    public sealed record ContentUpdated(string DocumentId, DateTime UpdatedAt, string ByEmail);
+
+    /// <summary>
+    /// Called by a client right after its save persisted. Viewers must not
+    /// be able to spoof update notifications, hence the write check.
+    /// </summary>
+    public async Task NotifySaved(string docIdStr)
+    {
+        if (!Guid.TryParse(docIdStr, out var docId)) throw new HubException("Invalid document id");
+        var uid = CurrentUserId();
+        if (!await CanWriteAsync(docId, uid)) throw new HubException("Forbidden");
+        BDoc.Domain.Entities.Document doc;
+        try
+        {
+            doc = await _repository.GetByIdAsync(docId);
+        }
+        catch
+        {
+            throw new HubException("Not found");
+        }
+        await Clients.OthersInGroup(docIdStr).SendAsync(
+            "ContentUpdated", new ContentUpdated(docIdStr, doc.UpdatedAt, CurrentEmail(Context.User)));
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)

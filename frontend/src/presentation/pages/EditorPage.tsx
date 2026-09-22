@@ -43,9 +43,11 @@ import {
   joinCollab,
   leaveCollab,
   sendCursor,
+  notifySaved,
   colorFor,
   remoteCursorStore,
   type PresenceUser,
+  type ContentMsg,
 } from '../../application/services/collabService';
 import { useDocuments } from '../../application/usecases/useDocument';
 import type { Document } from '../../domain/models/DocumentModel';
@@ -357,7 +359,12 @@ export default function EditorPage() {
   const [accessLevel, setAccessLevel] = useState<string | null>(null);
   const canEditRef = useRef(true);
   const [presence, setPresence] = useState<PresenceUser[]>([]);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const idRef = useRef(id);
+  /** True while applying a remote update — must not schedule a save (loop guard). */
+  const suppressSaveRef = useRef(false);
+  const saveStatusRef = useRef<SaveStatus>('idle');
+  const pendingRemoteRef = useRef<Document | null>(null);
   const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
@@ -921,7 +928,11 @@ export default function EditorPage() {
       },
     },
     onUpdate: ({ editor: ed, transaction }) => {
-      if (transaction?.getMeta('cursorSync')) return;
+      if (transaction?.getMeta('cursorSync')) return; // decoration-only refresh
+      if (!suppressSaveRef.current) {
+        setSaveStatus('dirty');
+        scheduleSave();
+      }
       setSaveStatus('dirty');
       scheduleSave();
       schedulePaginate();
@@ -1182,6 +1193,10 @@ export default function EditorPage() {
   }, [title]);
 
   useEffect(() => {
+    saveStatusRef.current = saveStatus;
+  }, [saveStatus]);
+
+  useEffect(() => {
     idRef.current = id;
   }, [id]);
 
@@ -1193,11 +1208,36 @@ export default function EditorPage() {
     ed.view.dispatch(ed.state.tr.setMeta('cursorSync', true));
   }, []);
 
-  // Realtime presence + cursors for this document.
+  // Apply a document fetched after a collaborator's save. Wrapped in the
+  // suppress flag so the resulting update never schedules a save (loop guard).
+  const applyRemoteDoc = useCallback(
+    (fresh: Document) => {
+      setDocument(fresh);
+      setTitle(fresh.title || 'Untitled');
+      const parsed = parsePageSettings(fresh.settings);
+      setPageSettings(parsed);
+      pageSettingsRef.current = parsed;
+      const ed = editorRef.current;
+      if (ed) {
+        suppressSaveRef.current = true;
+        try {
+          ed.commands.setContent(fresh.content || '<p></p>');
+        } finally {
+          suppressSaveRef.current = false;
+        }
+        window.setTimeout(schedulePaginate, 120);
+      }
+    },
+    [schedulePaginate],
+  );
+
+  // Realtime presence + cursors + content for this document.
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
     setPresence([]);
+    setUpdateAvailable(false);
+    pendingRemoteRef.current = null;
     remoteCursorStore.current = [];
     void joinCollab(id, {
       onPresence: (users) => {
@@ -1211,12 +1251,34 @@ export default function EditorPage() {
         ];
         refreshCursorDecorations();
       },
+      onContent: (msg: ContentMsg) => {
+        if (cancelled || msg.documentId !== id) return;
+        void (async () => {
+          let fresh: Document;
+          try {
+            fresh = await getDocument(id);
+          } catch {
+            return;
+          }
+          if (cancelled) return;
+          // Viewers and clean editors follow automatically; dirty editors
+          // keep their work and get a reload banner instead.
+          if (!canEditRef.current || saveStatusRef.current !== 'dirty') {
+            setUpdateAvailable(false);
+            pendingRemoteRef.current = null;
+            applyRemoteDoc(fresh);
+          } else {
+            pendingRemoteRef.current = fresh;
+            setUpdateAvailable(true);
+          }
+        })();
+      },
     });
     return () => {
       cancelled = true;
       void leaveCollab();
     };
-  }, [id, refreshCursorDecorations]);
+  }, [id, refreshCursorDecorations, applyRemoteDoc]);
 
   // Load document
   useEffect(() => {
@@ -1314,6 +1376,8 @@ export default function EditorPage() {
       });
       setSaveStatus('saved');
       rebuildPrintSnapshot();
+      // Tell collaborators a newer version is available (write-checked server-side).
+      notifySaved(doc.id);
     } catch {
       setSaveStatus('dirty');
     } finally {
@@ -1862,6 +1926,31 @@ export default function EditorPage() {
               {(p.email[0] ?? '?').toUpperCase()}
             </span>
           ))}
+        </div>
+      )}
+      {updateAvailable && (
+        <div
+          data-testid="update-banner"
+          className="fixed bottom-16 left-1/2 -translate-x-1/2 z-[95] flex items-center gap-3 rounded-xl bg-raised border border-[var(--border)] shadow-[var(--shadow-lg)] px-4 py-2.5 no-print"
+        >
+          <span className="text-sm text-ink">New changes available</span>
+          <button
+            onClick={() => {
+              const fresh = pendingRemoteRef.current;
+              pendingRemoteRef.current = null;
+              setUpdateAvailable(false);
+              if (fresh) applyRemoteDoc(fresh);
+            }}
+            className="px-3 py-1 rounded-lg text-sm bg-accent text-accent-contrast hover:bg-accent-hover transition-colors"
+          >
+            Reload
+          </button>
+          <button
+            onClick={() => setUpdateAvailable(false)}
+            className="px-3 py-1 rounded-lg text-sm text-ink-muted hover:bg-soft transition-colors"
+          >
+            Dismiss
+          </button>
         </div>
       )}
       {tableMenu && editor && (

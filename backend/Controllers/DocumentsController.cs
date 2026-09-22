@@ -28,13 +28,8 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>"owner", "editor", "viewer", or null (no access).</summary>
-    private async Task<string?> AccessLevelAsync(Document doc, Guid? uid)
-    {
-        if (uid is null) return null;
-        if (doc.OwnerId == uid) return "owner";
-        var share = await _repository.GetShareAsync(doc.Id, uid.Value);
-        return share?.Permission;
-    }
+    private async Task<string?> AccessLevelAsync(Document doc, Guid? uid) =>
+        await DocumentAccess.LevelAsync(_repository, doc, uid);
 
     private bool IsOwner(Document doc, Guid? uid) => uid is not null && doc.OwnerId == uid;
 
