@@ -32,6 +32,7 @@ interface AppLayoutProps {
   onHelp?: () => void;
   onVersionHistory?: () => void;
   onShare?: () => void;
+  onSuggestions?: () => void;
   title?: string;
   onTitleChange?: (value: string) => void;
   titleReadOnly?: boolean;
@@ -67,6 +68,7 @@ export default function AppLayout({
   onHelp,
   onVersionHistory,
   onShare,
+  onSuggestions,
   title,
   onTitleChange,
   titleReadOnly,
@@ -109,6 +111,7 @@ export default function AppLayout({
         onHelp={onHelp}
         onVersionHistory={onVersionHistory}
         onShare={onShare}
+        onSuggestions={onSuggestions}
         title={title}
         onTitleChange={onTitleChange}
         titleReadOnly={titleReadOnly}

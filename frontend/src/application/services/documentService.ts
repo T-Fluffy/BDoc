@@ -102,3 +102,31 @@ export const addShare = async (docId: string, email: string, permission: string)
 export const revokeShare = async (docId: string, userId: string): Promise<void> => {
   await axios.delete(`${API}/${docId}/shares/${userId}`);
 };
+
+export interface Suggestion {
+  id: string;
+  quote: string;
+  replacement: string;
+  status: string;
+  authorEmail: string;
+  createdAt: string;
+}
+
+export const getSuggestions = async (docId: string): Promise<Suggestion[]> => {
+  const res = await axios.get<Suggestion[]>(`${API}/${docId}/suggestions`);
+  return res.data;
+};
+
+export const addSuggestion = async (docId: string, quote: string, replacement: string): Promise<Suggestion> => {
+  const res = await axios.post<Suggestion>(`${API}/${docId}/suggestions`, { quote, replacement });
+  return res.data;
+};
+
+export const acceptSuggestion = async (docId: string, suggestionId: string): Promise<Document> => {
+  const res = await axios.post<Document>(`${API}/${docId}/suggestions/${suggestionId}/accept`);
+  return res.data;
+};
+
+export const rejectSuggestion = async (docId: string, suggestionId: string): Promise<void> => {
+  await axios.post(`${API}/${docId}/suggestions/${suggestionId}/reject`);
+};

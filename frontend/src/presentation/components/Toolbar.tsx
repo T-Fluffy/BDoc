@@ -6,6 +6,7 @@ import {
   FaAlignLeft,
   FaAlignRight,
   FaBold,
+  FaCommentDots,
   FaEraser,
   FaHighlighter,
   FaImage,
@@ -30,6 +31,9 @@ interface ToolbarProps {
   onZoomChange?: (next: number) => void;
   onPrint?: () => void;
   onImageUpload?: () => void;
+  mode?: 'editing' | 'suggesting';
+  onModeChange?: (mode: 'editing' | 'suggesting') => void;
+  onSuggest?: () => void;
 }
 
 interface ToolbarButtonProps {
@@ -69,7 +73,7 @@ const LINE_QUICK: { label: string; value: string }[] = [
   { label: 'Double', value: '2' },
 ];
 
-export function Toolbar({ editor, zoom, onZoomChange, onPrint, onImageUpload }: ToolbarProps) {
+export function Toolbar({ editor, zoom, onZoomChange, onPrint, onImageUpload, mode, onModeChange, onSuggest }: ToolbarProps) {
   // Re-render on every editor transaction/selection change so active states
   // and dropdown values never go stale (EditorPage itself rarely re-renders).
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
@@ -162,6 +166,26 @@ export function Toolbar({ editor, zoom, onZoomChange, onPrint, onImageUpload }: 
       <ToolbarButton action={() => editor.chain().focus().undo().run()} icon={<FaUndo size={13} />} title="Undo" />
       <ToolbarButton action={() => editor.chain().focus().redo().run()} icon={<FaRedo size={13} />} title="Redo" />
       <Separator />
+
+      {/* Editing mode */}
+      {mode !== undefined && onModeChange && (
+        <>
+          <select
+            value={mode}
+            onChange={(e) => onModeChange(e.target.value as 'editing' | 'suggesting')}
+            title="Editing mode"
+            aria-label="Editing mode"
+            className={selectCls}
+          >
+            <option value="editing">Editing</option>
+            <option value="suggesting">Suggesting</option>
+          </select>
+          {onSuggest && (
+            <ToolbarButton action={onSuggest} icon={<FaCommentDots size={13} />} title="Suggest a change for the selected text" />
+          )}
+          <Separator />
+        </>
+      )}
 
       {/* Zoom */}
       {zoom !== undefined && onZoomChange && (

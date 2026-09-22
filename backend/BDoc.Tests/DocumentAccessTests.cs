@@ -28,6 +28,10 @@ public class DocumentAccessTests
         public Task<HashSet<Guid>> GetSharedDocumentIdsAsync(Guid userId) => throw new NotImplementedException();
         public Task<DocumentShare> UpsertShareAsync(DocumentShare share) => throw new NotImplementedException();
         public Task RevokeShareAsync(Guid documentId, Guid userId) => throw new NotImplementedException();
+        public Task<IEnumerable<DocumentSuggestion>> GetSuggestionsAsync(Guid documentId) => throw new NotImplementedException();
+        public Task<DocumentSuggestion?> GetSuggestionAsync(Guid documentId, Guid suggestionId) => throw new NotImplementedException();
+        public Task<DocumentSuggestion> AddSuggestionAsync(DocumentSuggestion suggestion) => throw new NotImplementedException();
+        public Task SetSuggestionStatusAsync(Guid documentId, Guid suggestionId, string status) => throw new NotImplementedException();
     }
 
     private static (FakeRepo Repo, Document Doc, Guid Owner, Guid Other) Setup()

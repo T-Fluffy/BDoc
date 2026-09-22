@@ -68,6 +68,7 @@ interface NavbarProps {
   onHelp?: () => void;
   onVersionHistory?: () => void;
   onShare?: () => void;
+  onSuggestions?: () => void;
   title?: string;
   onTitleChange?: (value: string) => void;
   titleReadOnly?: boolean;
@@ -104,6 +105,7 @@ export default function NavbarComponent({
   onHelp,
   onVersionHistory,
   onShare,
+  onSuggestions,
   title,
   onTitleChange,
   titleReadOnly,
@@ -621,6 +623,7 @@ export default function NavbarComponent({
             onClose={closeMenu}
             items={[
               ...(onShare ? [{ key: 'share', label: 'Share…', action: () => { onShare(); closeMenu(); } }] : []),
+              ...(onSuggestions ? [{ key: 'sugg', label: 'Suggestions…', action: () => { onSuggestions(); closeMenu(); } }] : []),
               { key: 'wc', label: 'Word count…', action: () => { onWordCount?.(); closeMenu(); } },
               { key: 'find', label: 'Find and replace…', shortcut: 'Ctrl+H', action: () => { onFindReplace?.(); closeMenu(); } },
               ...(onVersionHistory ? [{ key: 'vh', label: 'Version history', action: () => { onVersionHistory(); closeMenu(); } }] : []),

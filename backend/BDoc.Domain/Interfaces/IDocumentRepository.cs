@@ -17,4 +17,8 @@ public interface IDocumentRepository
     Task<HashSet<Guid>> GetSharedDocumentIdsAsync(Guid userId);
     Task<DocumentShare> UpsertShareAsync(DocumentShare share);
     Task RevokeShareAsync(Guid documentId, Guid userId);
+    Task<IEnumerable<DocumentSuggestion>> GetSuggestionsAsync(Guid documentId);
+    Task<DocumentSuggestion?> GetSuggestionAsync(Guid documentId, Guid suggestionId);
+    Task<DocumentSuggestion> AddSuggestionAsync(DocumentSuggestion suggestion);
+    Task SetSuggestionStatusAsync(Guid documentId, Guid suggestionId, string status);
 }

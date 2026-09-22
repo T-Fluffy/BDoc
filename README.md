@@ -103,3 +103,4 @@ npm run dev                 # http://localhost:5173 (proxies /api -> localhost:8
 - ~~JWT-based authentication~~ ✅ done (register/login, per-user document isolation)
 - ~~Markdown import/export~~ ✅ done
 - ~~Real-time collaboration~~ ✅ done phase A+B (SignalR presence, live cursors, live content relay with update banner)
+- **Suggesting mode** — propose quote-anchored replacements; owners accept/reject (stale quotes rejected with 409)

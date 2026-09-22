@@ -30,6 +30,8 @@ import AppLayout from '../layout/AppLayout';
 import { Toolbar } from '../components/Toolbar';
 import VersionHistoryDialog from '../components/VersionHistoryDialog';
 import ShareDialog from '../components/ShareDialog';
+import SuggestDialog from '../components/SuggestDialog';
+import SuggestionsDialog from '../components/SuggestionsDialog';
 import Ruler from '../components/Ruler';
 import HeaderFooterDialog from '../components/HeaderFooterDialog';
 import FindReplaceDialog from '../components/FindReplaceDialog';
@@ -356,6 +358,9 @@ export default function EditorPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestDraft, setSuggestDraft] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState<'editing' | 'suggesting'>('editing');
   const [accessLevel, setAccessLevel] = useState<string | null>(null);
   const canEditRef = useRef(true);
   const [presence, setPresence] = useState<PresenceUser[]>([]);
@@ -1334,13 +1339,13 @@ export default function EditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, document?.id]);
 
-  // View-only access: ProseMirror read-only (toolbar commands no-op too).
+  // View-only access and suggesting mode: ProseMirror read-only.
   // NOTE: emitUpdate=false is load-bearing. The default (true) emits a fake
   // `update` that desyncs later keyboard-driven transactions (e.g. Mod+B
   // applies browser-native bold that never reaches the doc or autosave).
   useEffect(() => {
-    if (editor) editor.setEditable(accessLevel !== 'viewer', false);
-  }, [editor, accessLevel]);
+    if (editor) editor.setEditable(accessLevel !== 'viewer' && editMode === 'editing', false);
+  }, [editor, accessLevel, editMode]);
 
   // Re-paginate after images load (height changes without an editor update) and
   // when the viewport (column width) changes.
@@ -1417,10 +1422,18 @@ export default function EditorPage() {
   }, [save, saveStatus]);
 
   const handleTitleChange = (value: string) => {
-    if (!canEditRef.current) return;
+    if (!canEditRef.current || editMode !== 'editing') return;
     setTitle(value);
     setSaveStatus('dirty');
     scheduleSave();
+  };
+
+  const openSuggestDialog = () => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const { from, to } = ed.state.selection;
+    const quote = from === to ? '' : ed.state.doc.textBetween(from, to, ' ');
+    setSuggestDraft(quote);
   };
 
   const handlePageSettingsChange = (next: PageSettings) => {
@@ -1699,6 +1712,8 @@ export default function EditorPage() {
   const stackHeightMm = Math.max(pageH, pageCount * pageH + Math.max(0, pageCount - 1) * gapMm);
   const spacerPx = (2 * pageM + gapMm) * PX_PER_MM;
 
+  const canEdit = accessLevel !== 'viewer';
+
   return (
     <AppLayout
       editor={editor}
@@ -1725,15 +1740,16 @@ export default function EditorPage() {
       onHelp={() => setHelpOpen(true)}
       onVersionHistory={() => setVersionHistoryOpen(true)}
       onShare={accessLevel === 'owner' ? () => setShareOpen(true) : undefined}
+      onSuggestions={() => setSuggestionsOpen(true)}
       onAddComment={handleAddComment}
       onInsertToc={handleInsertToc}
       title={title}
       onTitleChange={handleTitleChange}
-      titleReadOnly={accessLevel === 'viewer'}
+      titleReadOnly={accessLevel === 'viewer' || editMode !== 'editing'}
       titleStatus={
         <span className="inline-flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${saveStatus === 'dirty' ? 'bg-amber-400' : saveStatus === 'saving' ? 'bg-accent' : saveStatus === 'saved' ? 'bg-success' : 'bg-ink-faint'}`} />
-          {accessLevel === 'viewer' ? 'View only' : statusLabel}
+          {accessLevel === 'viewer' ? 'View only' : editMode === 'suggesting' ? 'Suggesting' : statusLabel}
         </span>
       }
       onImageUpload={() => imageInputRef.current?.click()}
@@ -1765,7 +1781,16 @@ export default function EditorPage() {
           {/* Toolbar */}
           <div className="sticky top-0 z-50 pt-2 pb-4 bg-gradient-to-b from-workspace via-workspace/95 to-transparent no-print">
             <div className="px-4">
-              <Toolbar editor={editor} zoom={zoom} onZoomChange={handleZoomChange} onPrint={() => window.print()} onImageUpload={() => imageInputRef.current?.click()} />
+              <Toolbar
+                editor={editor}
+                zoom={zoom}
+                onZoomChange={handleZoomChange}
+                onPrint={() => window.print()}
+                onImageUpload={() => imageInputRef.current?.click()}
+                mode={canEdit ? editMode : undefined}
+                onModeChange={canEdit ? setEditMode : undefined}
+                onSuggest={canEdit ? openSuggestDialog : undefined}
+              />
             </div>
             {showRuler && (
               <Ruler editor={editor} pageWidthMm={pageW} marginMm={pageM} onMarginChange={handleMarginChange} />
@@ -1912,6 +1937,25 @@ export default function EditorPage() {
       )}
       {shareOpen && id && (
         <ShareDialog docId={id} onClose={() => setShareOpen(false)} />
+      )}
+      {suggestDraft !== null && id && (
+        <SuggestDialog
+          docId={id}
+          quote={suggestDraft}
+          onClose={() => setSuggestDraft(null)}
+          onSubmitted={() => {
+            setSuggestDraft(null);
+            setSuggestionsOpen(true);
+          }}
+        />
+      )}
+      {suggestionsOpen && id && (
+        <SuggestionsDialog
+          docId={id}
+          isOwner={accessLevel === 'owner'}
+          onClose={() => setSuggestionsOpen(false)}
+          onApplied={(fresh) => applyRemoteDoc(fresh)}
+        />
       )}
       {presence.length > 0 && (
         <div data-testid="presence" className="fixed right-4 top-24 z-[90] flex flex-col gap-1.5 no-print">

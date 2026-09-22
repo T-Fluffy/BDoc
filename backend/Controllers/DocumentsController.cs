@@ -246,4 +246,100 @@ public class DocumentsController : ControllerBase
         await _repository.RevokeShareAsync(id, userId);
         return NoContent();
     }
+
+    public record SuggestionRequest(string Quote, string Replacement);
+
+    [HttpGet("{id}/suggestions")]
+    public async Task<IActionResult> GetSuggestions(Guid id)
+    {
+        Document doc;
+        try { doc = await _repository.GetByIdAsync(id); }
+        catch (Exception ex) { return NotFound(ex.Message); }
+        if (await AccessLevelAsync(doc, CurrentUserId()) is null) return Forbid();
+        var suggestions = await _repository.GetSuggestionsAsync(id);
+        var result = new List<object>();
+        foreach (var s in suggestions)
+        {
+            var author = await _auth.FindByIdAsync(s.AuthorId);
+            result.Add(new
+            {
+                id = s.Id,
+                quote = s.Quote,
+                replacement = s.Replacement,
+                status = s.Status,
+                authorEmail = author?.Email ?? "?",
+                createdAt = s.CreatedAt,
+            });
+        }
+        return Ok(result);
+    }
+
+    [HttpPost("{id}/suggestions")]
+    public async Task<IActionResult> AddSuggestion(Guid id, SuggestionRequest req)
+    {
+        Document doc;
+        try { doc = await _repository.GetByIdAsync(id); }
+        catch (Exception ex) { return NotFound(ex.Message); }
+        var uid = CurrentUserId();
+        // Suggesting is a write action: owners and editors only.
+        if (await AccessLevelAsync(doc, uid) is not ("owner" or "editor")) return Forbid();
+        if (string.IsNullOrWhiteSpace(req.Quote) || string.IsNullOrWhiteSpace(req.Replacement))
+            return BadRequest("Quote and replacement must not be empty");
+        var suggestion = await _repository.AddSuggestionAsync(new DocumentSuggestion
+        {
+            DocumentId = id,
+            AuthorId = uid!.Value,
+            Quote = req.Quote,
+            Replacement = req.Replacement,
+        });
+        var author = await _auth.FindByIdAsync(suggestion.AuthorId);
+        return Ok(new
+        {
+            id = suggestion.Id,
+            quote = suggestion.Quote,
+            replacement = suggestion.Replacement,
+            status = suggestion.Status,
+            authorEmail = author?.Email ?? "?",
+            createdAt = suggestion.CreatedAt,
+        });
+    }
+
+    [HttpPost("{id}/suggestions/{suggestionId}/accept")]
+    public async Task<IActionResult> AcceptSuggestion(Guid id, Guid suggestionId)
+    {
+        Document doc;
+        try { doc = await _repository.GetByIdAsync(id); }
+        catch (Exception ex) { return NotFound(ex.Message); }
+        if (!IsOwner(doc, CurrentUserId())) return Forbid();
+        var suggestion = await _repository.GetSuggestionAsync(id, suggestionId);
+        if (suggestion is null) return NotFound("Suggestion not found");
+        if (suggestion.Status != "pending") return Conflict("Suggestion already resolved");
+        var index = doc.Content.IndexOf(suggestion.Quote, StringComparison.Ordinal);
+        if (index < 0) return Conflict("Suggestion is stale: quoted text no longer present");
+        var updated = new Document
+        {
+            Id = doc.Id,
+            Title = doc.Title,
+            Content = doc.Content.Substring(0, index) + suggestion.Replacement + doc.Content.Substring(index + suggestion.Quote.Length),
+            Settings = doc.Settings,
+            OwnerId = doc.OwnerId,
+        };
+        await _repository.UpdateAsync(updated);
+        await _repository.SetSuggestionStatusAsync(id, suggestionId, "accepted");
+        return Ok(await _repository.GetByIdAsync(id));
+    }
+
+    [HttpPost("{id}/suggestions/{suggestionId}/reject")]
+    public async Task<IActionResult> RejectSuggestion(Guid id, Guid suggestionId)
+    {
+        Document doc;
+        try { doc = await _repository.GetByIdAsync(id); }
+        catch (Exception ex) { return NotFound(ex.Message); }
+        if (!IsOwner(doc, CurrentUserId())) return Forbid();
+        var suggestion = await _repository.GetSuggestionAsync(id, suggestionId);
+        if (suggestion is null) return NotFound("Suggestion not found");
+        if (suggestion.Status != "pending") return Conflict("Suggestion already resolved");
+        await _repository.SetSuggestionStatusAsync(id, suggestionId, "rejected");
+        return NoContent();
+    }
 }

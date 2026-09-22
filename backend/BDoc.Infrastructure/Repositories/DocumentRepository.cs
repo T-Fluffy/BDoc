@@ -68,6 +68,8 @@ public class DocumentRepository : IDocumentRepository
         {
             var shares = await _context.DocumentShares.Where(s => s.DocumentId == id).ToListAsync();
             _context.DocumentShares.RemoveRange(shares);
+            var suggestions = await _context.DocumentSuggestions.Where(s => s.DocumentId == id).ToListAsync();
+            _context.DocumentSuggestions.RemoveRange(suggestions);
             _context.Documents.Remove(doc);
             await _context.SaveChangesAsync();
         }
@@ -127,5 +129,30 @@ public class DocumentRepository : IDocumentRepository
             _context.DocumentShares.Remove(existing);
             await _context.SaveChangesAsync();
         }
+    }
+
+    public async Task<IEnumerable<DocumentSuggestion>> GetSuggestionsAsync(Guid documentId) =>
+        await _context.DocumentSuggestions
+            .Where(s => s.DocumentId == documentId)
+            .OrderBy(s => s.CreatedAt)
+            .ToListAsync();
+
+    public async Task<DocumentSuggestion?> GetSuggestionAsync(Guid documentId, Guid suggestionId) =>
+        await _context.DocumentSuggestions
+            .FirstOrDefaultAsync(s => s.DocumentId == documentId && s.Id == suggestionId);
+
+    public async Task<DocumentSuggestion> AddSuggestionAsync(DocumentSuggestion suggestion)
+    {
+        _context.DocumentSuggestions.Add(suggestion);
+        await _context.SaveChangesAsync();
+        return suggestion;
+    }
+
+    public async Task SetSuggestionStatusAsync(Guid documentId, Guid suggestionId, string status)
+    {
+        var existing = await GetSuggestionAsync(documentId, suggestionId);
+        if (existing is null) throw new Exception("Suggestion not found");
+        existing.Status = status;
+        await _context.SaveChangesAsync();
     }
 }

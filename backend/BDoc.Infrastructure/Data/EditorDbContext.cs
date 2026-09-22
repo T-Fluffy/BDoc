@@ -11,6 +11,7 @@ public class EditorDbContext : DbContext
     public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
     public DbSet<User> Users => Set<User>();
     public DbSet<DocumentShare> DocumentShares => Set<DocumentShare>();
+    public DbSet<DocumentSuggestion> DocumentSuggestions => Set<DocumentSuggestion>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
