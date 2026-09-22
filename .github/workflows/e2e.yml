@@ -27,6 +27,9 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Start stack
+        env:
+          # Ephemeral signing key per CI run (backend fails fast without one).
+          JWT_KEY: ${{ github.sha }}-${{ github.run_id }}-ci-secret-32chars-minimum-ok
         run: docker compose up -d --build
 
       - name: Wait for backend

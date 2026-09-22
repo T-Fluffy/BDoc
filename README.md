@@ -57,6 +57,7 @@ BDoc/
 ## 🚀 Quick Start (Docker)
 
 ```bash
+cp .env.example .env   # then put a generated secret in JWT_KEY (see comments inside)
 docker compose up --build
 ```
 
@@ -98,6 +99,6 @@ npm run dev                 # http://localhost:5173 (proxies /api -> localhost:8
 
 ## 🗺️ Roadmap
 
-- JWT-based authentication
+- ~~JWT-based authentication~~ ✅ done (register/login, per-user document isolation)
 - Real-time collaboration (SignalR) & live cursors
 - Markdown import/export

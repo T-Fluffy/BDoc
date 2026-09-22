@@ -13,11 +13,13 @@ public class AuthService
 {
     private readonly EditorDbContext _db;
     private readonly IConfiguration _cfg;
+    private readonly IHostEnvironment _env;
 
-    public AuthService(EditorDbContext db, IConfiguration cfg)
+    public AuthService(EditorDbContext db, IConfiguration cfg, IHostEnvironment env)
     {
         _db = db;
         _cfg = cfg;
+        _env = env;
     }
 
     public async Task<User?> FindByEmailAsync(string email) =>
@@ -48,7 +50,7 @@ public class AuthService
 
     public string GenerateToken(User user)
     {
-        var key = _cfg["Jwt:Key"] ?? "dev-super-secret-key-change-me-32chars!!";
+        var key = JwtOptions.ResolveKey(_cfg, _env.IsProduction());
         var issuer = _cfg["Jwt:Issuer"] ?? "BDoc";
         var audience = _cfg["Jwt:Audience"] ?? "BDoc";
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key));

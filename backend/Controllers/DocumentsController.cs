@@ -114,7 +114,6 @@ public class DocumentsController : ControllerBase
     }
 
     [HttpPost("import")]
-    [AllowAnonymous]
     public async Task<IActionResult> Import(IFormFile file)
     {
         if (file is null || file.Length == 0) return BadRequest("No file uploaded");

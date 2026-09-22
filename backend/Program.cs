@@ -1,4 +1,5 @@
 using System.Text;
+using BDoc;
 using BDoc.Domain.Interfaces;
 using BDoc.Infrastructure.Data;
 using BDoc.Infrastructure.Repositories;
@@ -27,7 +28,7 @@ builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddHttpContextAccessor();
 
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "dev-super-secret-key-change-me-32chars!!";
+var jwtKey = JwtOptions.ResolveKey(builder.Configuration, builder.Environment.IsProduction());
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "BDoc";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "BDoc";
 

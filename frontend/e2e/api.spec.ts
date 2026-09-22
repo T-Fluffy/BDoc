@@ -11,6 +11,10 @@ test.describe('documents API contract', () => {
       data: { id: crypto.randomUUID(), title: 'anon', content: '', updatedAt: new Date().toISOString() },
     });
     expect(create.status()).toBe(401);
+    const imp = await request.post(`${API_URL}/documents/import`, {
+      multipart: { file: { name: 'empty.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.alloc(0) } },
+    });
+    expect(imp.status()).toBe(401);
   });
 
   test('list returns an array', async ({ request }) => {
