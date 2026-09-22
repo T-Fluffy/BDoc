@@ -18,6 +18,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Backend unit tests
+        run: dotnet test backend/BDoc.Tests/BDoc.Tests.csproj --nologo -v q
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --legacy-peer-deps
