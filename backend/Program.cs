@@ -1,6 +1,7 @@
 using System.Text;
 using BDoc;
 using BDoc.Domain.Interfaces;
+using BDoc.Hubs;
 using BDoc.Infrastructure.Data;
 using BDoc.Infrastructure.Repositories;
 using BDoc.Services;
@@ -46,8 +47,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             ClockSkew = TimeSpan.FromMinutes(2),
         };
+        // WebSockets cannot set headers: SignalR passes the JWT as ?access_token.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                    context.Token = accessToken;
+                return Task.CompletedTask;
+            },
+        };
     });
 builder.Services.AddAuthorization();
+builder.Services.AddSignalR();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -69,4 +83,5 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<CollabHub>("/hubs/collab");
 app.Run();

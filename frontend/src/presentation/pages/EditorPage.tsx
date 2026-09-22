@@ -1,9 +1,10 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Node, Editor } from '@tiptap/core';
+import { Node, Editor, Extension } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { Selection, TextSelection } from '@tiptap/pm/state';
+import { Selection, TextSelection, Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Paragraph from '@tiptap/extension-paragraph';
@@ -38,6 +39,14 @@ import TableContextMenu from '../components/TableContextMenu';
 import { getDocument, updateDocument, getAccessLevel } from '../../application/services/documentService';
 import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
 import { exportDocumentToMarkdown, importDocumentFromMarkdown } from '../../application/services/markdownService';
+import {
+  joinCollab,
+  leaveCollab,
+  sendCursor,
+  colorFor,
+  remoteCursorStore,
+  type PresenceUser,
+} from '../../application/services/collabService';
 import { useDocuments } from '../../application/usecases/useDocument';
 import type { Document } from '../../domain/models/DocumentModel';
 import {
@@ -236,6 +245,44 @@ function measureSpaceWidth(): number {
   return 4;
 }
 
+/** Renders collaborators' live cursors/selections from the collab store. */
+const RemoteCursors = Extension.create({
+  name: 'remoteCursors',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('remoteCursors'),
+        props: {
+          decorations: (state) => {
+            const size = state.doc.content.size;
+            const decos: Decoration[] = [];
+            for (const c of remoteCursorStore.current) {
+              const color = colorFor(c.email);
+              const from = Math.max(0, Math.min(c.from, size));
+              const to = Math.max(0, Math.min(c.to, size));
+              if (to > from) {
+                decos.push(
+                  Decoration.inline(from, to, { class: 'remote-selection', style: `--rc:${color}` }),
+                );
+              }
+              const flag = document.createElement('span');
+              flag.className = 'remote-cursor-flag';
+              flag.dataset.email = c.email;
+              flag.style.setProperty('--rc', color);
+              const label = document.createElement('span');
+              label.className = 'remote-cursor-label';
+              label.textContent = c.email;
+              flag.appendChild(label);
+              decos.push(Decoration.widget(to, flag));
+            }
+            return DecorationSet.create(state.doc, decos);
+          },
+        },
+      }),
+    ];
+  },
+});
+
 const extensions = [
   StarterKit.configure({ heading: false, paragraph: false }),
   ParagraphSpacing,
@@ -276,8 +323,8 @@ const extensions = [
   TaskItem.configure({ nested: true }),
   CommentMark,
   PageBreak,
+  RemoteCursors,
 ];
-
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved';
 
 export default function EditorPage() {
@@ -309,6 +356,8 @@ export default function EditorPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [accessLevel, setAccessLevel] = useState<string | null>(null);
   const canEditRef = useRef(true);
+  const [presence, setPresence] = useState<PresenceUser[]>([]);
+  const idRef = useRef(id);
   const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
@@ -871,7 +920,8 @@ export default function EditorPage() {
         }
       },
     },
-    onUpdate: ({ editor: ed }) => {
+    onUpdate: ({ editor: ed, transaction }) => {
+      if (transaction?.getMeta('cursorSync')) return;
       setSaveStatus('dirty');
       scheduleSave();
       schedulePaginate();
@@ -880,8 +930,13 @@ export default function EditorPage() {
       const next = text ? text.split(/\s+/).length : 0;
       setWordCount((prev) => (prev === next ? prev : next));
     },
-    onSelectionUpdate: () => {
+    onSelectionUpdate: ({ editor: ed }) => {
       updateCaretPage();
+      const docId = idRef.current;
+      if (docId) {
+        const { from, to } = ed.state.selection;
+        sendCursor(docId, from, to);
+      }
     },
   });
   editorRef.current = editor;
@@ -1125,6 +1180,43 @@ export default function EditorPage() {
   useEffect(() => {
     titleRef.current = title;
   }, [title]);
+
+  useEffect(() => {
+    idRef.current = id;
+  }, [id]);
+
+  // Refresh remote-cursor decorations without triggering autosave
+  // (the cursorSync meta is skipped by onUpdate).
+  const refreshCursorDecorations = useCallback(() => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    ed.view.dispatch(ed.state.tr.setMeta('cursorSync', true));
+  }, []);
+
+  // Realtime presence + cursors for this document.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    setPresence([]);
+    remoteCursorStore.current = [];
+    void joinCollab(id, {
+      onPresence: (users) => {
+        if (!cancelled) setPresence(users);
+      },
+      onCursor: (msg) => {
+        if (cancelled) return;
+        remoteCursorStore.current = [
+          ...remoteCursorStore.current.filter((c) => c.userId !== msg.userId),
+          msg,
+        ];
+        refreshCursorDecorations();
+      },
+    });
+    return () => {
+      cancelled = true;
+      void leaveCollab();
+    };
+  }, [id, refreshCursorDecorations]);
 
   // Load document
   useEffect(() => {
@@ -1756,6 +1848,21 @@ export default function EditorPage() {
       )}
       {shareOpen && id && (
         <ShareDialog docId={id} onClose={() => setShareOpen(false)} />
+      )}
+      {presence.length > 0 && (
+        <div data-testid="presence" className="fixed right-4 top-24 z-[90] flex flex-col gap-1.5 no-print">
+          {presence.map((p) => (
+            <span
+              key={p.userId}
+              data-email={p.email}
+              title={p.email}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white shadow"
+              style={{ background: colorFor(p.email) }}
+            >
+              {(p.email[0] ?? '?').toUpperCase()}
+            </span>
+          ))}
+        </div>
       )}
       {tableMenu && editor && (
         <TableContextMenu

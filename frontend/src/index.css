@@ -634,3 +634,29 @@
     height: auto !important;
   }
 }
+
+/* ---- Realtime collaboration: remote cursors + selections ---- */
+.remote-cursor-flag {
+  position: relative;
+  border-left: 2px solid var(--rc, #3b82f6);
+  margin-left: -2px;
+  pointer-events: none;
+}
+.remote-cursor-label {
+  position: absolute;
+  top: -1.2em;
+  left: -2px;
+  font-size: 10px;
+  line-height: 1.4;
+  font-style: normal;
+  font-weight: 600;
+  background: var(--rc, #3b82f6);
+  color: #fff;
+  padding: 0 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  z-index: 5;
+}
+.remote-selection {
+  background: color-mix(in srgb, var(--rc, #3b82f6) 22%, transparent);
+}

@@ -17,13 +17,17 @@ axios.interceptors.response.use(
   (r) => r,
   (error) => {
     const status = error?.response?.status;
-    if (status === 401 || status === 403) {
+    if (status === 401) {
+      // Token is dead: drop the session and bounce to login.
       localStorage.removeItem('bdoc-token');
       localStorage.removeItem('bdoc-email');
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
     }
+    // NOTE: 403 (valid session, forbidden resource) intentionally does NOT
+    // clear the session — e.g. opening a revoked shared link must show an
+    // access error, not log the user out. Callers surface it in UI.
     return Promise.reject(error);
   },
 );
