@@ -73,3 +73,28 @@ export const getVersions = async (docId: string): Promise<DocumentVersion[]> => 
 export const restoreVersion = async (docId: string, versionId: string): Promise<void> => {
   await axios.post(`${API}/${docId}/restore/${versionId}`);
 };
+
+export const getAccessLevel = async (docId: string): Promise<string> => {
+  const res = await axios.get<{ level: string }>(`${API}/${docId}/access`);
+  return res.data.level;
+};
+
+export interface ShareInfo {
+  userId: string;
+  email: string;
+  permission: string;
+}
+
+export const getShares = async (docId: string): Promise<ShareInfo[]> => {
+  const res = await axios.get<ShareInfo[]>(`${API}/${docId}/shares`);
+  return res.data;
+};
+
+export const addShare = async (docId: string, email: string, permission: string): Promise<ShareInfo> => {
+  const res = await axios.post<ShareInfo>(`${API}/${docId}/shares`, { email, permission });
+  return res.data;
+};
+
+export const revokeShare = async (docId: string, userId: string): Promise<void> => {
+  await axios.delete(`${API}/${docId}/shares/${userId}`);
+};

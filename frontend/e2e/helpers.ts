@@ -104,6 +104,37 @@ export async function createDoc(
   };
 }
 
+/** Login as an arbitrary user (registering first if needed). Returns the JWT. */
+export async function loginWith(
+  page: Page,
+  request: APIRequestContext,
+  email: string,
+  password: string,
+): Promise<string> {
+  let res = await request.post(`${API_URL}/auth/login`, { data: { email, password } });
+  if (!res.ok()) {
+    const reg = await request.post(`${API_URL}/auth/register`, { data: { email, password } });
+    res = reg.ok()
+      ? await request.post(`${API_URL}/auth/login`, { data: { email, password } })
+      : reg;
+    if (!res.ok()) {
+      res = await request.post(`${API_URL}/auth/login`, { data: { email, password } });
+    }
+  }
+  expect(res.ok()).toBeTruthy();
+  const data = (await res.json()) as { token: string };
+  await page.goto('/login');
+  await page.evaluate(
+    ({ t, e }) => {
+      localStorage.setItem('bdoc-token', t);
+      localStorage.setItem('bdoc-email', e);
+    },
+    { t: data.token, e: email },
+  );
+  page.on('dialog', (d) => void d.dismiss().catch(() => undefined));
+  return data.token;
+}
+
 /** Real login via JWT and dismiss dialogs. */
 export async function login(page: Page, request?: APIRequestContext): Promise<void> {
   if (request) {

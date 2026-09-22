@@ -4,4 +4,6 @@ export interface Document {
   content: string;
   settings?: string;
   updatedAt: string;
+  ownerId?: string;
+  sharedWithMe?: boolean;
 }

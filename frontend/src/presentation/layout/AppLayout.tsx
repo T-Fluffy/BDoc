@@ -29,8 +29,10 @@ interface AppLayoutProps {
   onWordCount?: () => void;
   onHelp?: () => void;
   onVersionHistory?: () => void;
+  onShare?: () => void;
   title?: string;
   onTitleChange?: (value: string) => void;
+  titleReadOnly?: boolean;
   titleStatus?: ReactNode;
   onImageUpload?: () => void;
   onInsertToc?: () => void;
@@ -60,8 +62,10 @@ export default function AppLayout({
   onWordCount,
   onHelp,
   onVersionHistory,
+  onShare,
   title,
   onTitleChange,
+  titleReadOnly,
   titleStatus,
   onImageUpload,
   onInsertToc,
@@ -98,8 +102,10 @@ export default function AppLayout({
         onWordCount={onWordCount}
         onHelp={onHelp}
         onVersionHistory={onVersionHistory}
+        onShare={onShare}
         title={title}
         onTitleChange={onTitleChange}
+        titleReadOnly={titleReadOnly}
         titleStatus={titleStatus}
         onImageUpload={onImageUpload}
         onInsertToc={onInsertToc}

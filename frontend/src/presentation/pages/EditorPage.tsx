@@ -28,13 +28,14 @@ import { FaSpinner } from 'react-icons/fa';
 import AppLayout from '../layout/AppLayout';
 import { Toolbar } from '../components/Toolbar';
 import VersionHistoryDialog from '../components/VersionHistoryDialog';
+import ShareDialog from '../components/ShareDialog';
 import Ruler from '../components/Ruler';
 import HeaderFooterDialog from '../components/HeaderFooterDialog';
 import FindReplaceDialog from '../components/FindReplaceDialog';
 import WordCountDialog from '../components/WordCountDialog';
 import HelpDialog from '../components/HelpDialog';
 import TableContextMenu from '../components/TableContextMenu';
-import { getDocument, updateDocument } from '../../application/services/documentService';
+import { getDocument, updateDocument, getAccessLevel } from '../../application/services/documentService';
 import { exportDocumentToDocx, importDocumentFromDocx } from '../../application/services/docxService';
 import { useDocuments } from '../../application/usecases/useDocument';
 import type { Document } from '../../domain/models/DocumentModel';
@@ -304,6 +305,9 @@ export default function EditorPage() {
   const [wordCountOpen, setWordCountOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [accessLevel, setAccessLevel] = useState<string | null>(null);
+  const canEditRef = useRef(true);
   const [tableMenu, setTableMenu] = useState<{ x: number; y: number } | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1126,6 +1130,8 @@ export default function EditorPage() {
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
+    setAccessLevel(null);
+    canEditRef.current = true;
     // Fresh document → fresh pagination state immediately (before content
     // loads and paginate runs). Otherwise a stale page count from the
     // previously open document lingers on empty/new documents.
@@ -1146,6 +1152,17 @@ export default function EditorPage() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    // Viewers get a read-only editor (and no autosave) so a 403 can never
+    // log them out via the auth interceptor.
+    getAccessLevel(id)
+      .then((level) => {
+        if (cancelled) return;
+        setAccessLevel(level);
+        canEditRef.current = level !== 'viewer';
+      })
+      .catch(() => {
+        if (!cancelled) setAccessLevel(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -1160,6 +1177,14 @@ export default function EditorPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, document?.id]);
+
+  // View-only access: ProseMirror read-only (toolbar commands no-op too).
+  // NOTE: emitUpdate=false is load-bearing. The default (true) emits a fake
+  // `update` that desyncs later keyboard-driven transactions (e.g. Mod+B
+  // applies browser-native bold that never reaches the doc or autosave).
+  useEffect(() => {
+    if (editor) editor.setEditable(accessLevel !== 'viewer', false);
+  }, [editor, accessLevel]);
 
   // Re-paginate after images load (height changes without an editor update) and
   // when the viewport (column width) changes.
@@ -1179,6 +1204,7 @@ export default function EditorPage() {
   const save = useCallback(async () => {
     const doc = docRef.current;
     if (!doc || !editor) return;
+    if (!canEditRef.current) return;
     if (saveInFlight.current) {
       pending.current = true;
       return;
@@ -1233,6 +1259,7 @@ export default function EditorPage() {
   }, [save, saveStatus]);
 
   const handleTitleChange = (value: string) => {
+    if (!canEditRef.current) return;
     setTitle(value);
     setSaveStatus('dirty');
     scheduleSave();
@@ -1505,14 +1532,16 @@ export default function EditorPage() {
       onWordCount={() => setWordCountOpen(true)}
       onHelp={() => setHelpOpen(true)}
       onVersionHistory={() => setVersionHistoryOpen(true)}
+      onShare={accessLevel === 'owner' ? () => setShareOpen(true) : undefined}
       onAddComment={handleAddComment}
       onInsertToc={handleInsertToc}
       title={title}
       onTitleChange={handleTitleChange}
+      titleReadOnly={accessLevel === 'viewer'}
       titleStatus={
         <span className="inline-flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${saveStatus === 'dirty' ? 'bg-amber-400' : saveStatus === 'saving' ? 'bg-accent' : saveStatus === 'saved' ? 'bg-success' : 'bg-ink-faint'}`} />
-          {statusLabel}
+          {accessLevel === 'viewer' ? 'View only' : statusLabel}
         </span>
       }
       onImageUpload={() => imageInputRef.current?.click()}
@@ -1664,6 +1693,7 @@ export default function EditorPage() {
       {versionHistoryOpen && id && (
         <VersionHistoryDialog
           docId={id}
+          readOnly={accessLevel === 'viewer'}
           onClose={() => setVersionHistoryOpen(false)}
           onRestored={async () => {
             try {
@@ -1680,6 +1710,9 @@ export default function EditorPage() {
             }
           }}
         />
+      )}
+      {shareOpen && id && (
+        <ShareDialog docId={id} onClose={() => setShareOpen(false)} />
       )}
       {tableMenu && editor && (
         <TableContextMenu

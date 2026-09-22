@@ -139,16 +139,18 @@ export default function Home() {
                   <div className="p-3 bg-accent-soft rounded-lg text-accent group-hover:scale-110 transition-transform">
                     <FaFileAlt size={18} />
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(doc.id);
-                    }}
-                    className="p-2 rounded-lg text-ink-faint opacity-0 group-hover:opacity-100 hover:text-danger hover:bg-danger-soft transition-all"
-                    title="Delete"
-                  >
-                    <FaTrash size={13} />
-                  </button>
+                  {!doc.sharedWithMe && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(doc.id);
+                      }}
+                      className="p-2 rounded-lg text-ink-faint opacity-0 group-hover:opacity-100 hover:text-danger hover:bg-danger-soft transition-all"
+                      title="Delete"
+                    >
+                      <FaTrash size={13} />
+                    </button>
+                  )}
                 </div>
 
                 <h3 className="font-semibold text-ink mb-1 truncate group-hover:text-accent transition-colors">
@@ -158,6 +160,11 @@ export default function Home() {
                 <div className="flex items-center gap-2 text-xs text-ink-faint">
                   <FaClock size={10} />
                   <span>Edited {timeAgo(doc.updatedAt)}</span>
+                  {doc.sharedWithMe && (
+                    <span className="ml-auto px-2 py-0.5 rounded-full bg-accent-soft text-accent font-semibold">
+                      Shared
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

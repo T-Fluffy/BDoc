@@ -32,6 +32,20 @@ function docXml(buf: Buffer): string {
   return zip.readAsText(zip.getEntry('word/document.xml')!);
 }
 
+async function importDocx(request: import('@playwright/test').APIRequestContext, buf: Buffer, name: string) {
+  const fd = new FormData();
+  fd.append('file', new Blob([new Uint8Array(buf)], {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  }), name);
+  const imp = await fetch(`${API_URL}/documents/import`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await getTestToken(request)}` },
+    body: fd,
+  });
+  expect(imp.ok).toBeTruthy();
+  return imp.json();
+}
+
 test.describe('docx round-trip', () => {
   test('export emits headers, footers, fields, page setup; import restores them', async ({
     request,
@@ -74,13 +88,7 @@ test.describe('docx round-trip', () => {
       expect(xml).toMatch(/w:top="1701"/); // 30mm wide margins in twips
 
       // Import it back: body clean, settings identical (fixed point).
-      const fd = new FormData();
-      fd.append('file', new Blob([new Uint8Array(buf)], {
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      }), 'rt.docx');
-      const imp = await fetch(`${API_URL}/documents/import`, { method: 'POST', body: fd });
-      expect(imp.ok).toBeTruthy();
-      const imported = await imp.json();
+      const imported = await importDocx(request, buf, 'rt.docx');
       expect(imported.html).toContain('Round trip body paragraph one.');
       expect(imported.html).not.toMatch(/RT Header|RT Footer|Page \d+ of/);
       const s = typeof imported.settings === 'string' ? JSON.parse(imported.settings) : imported.settings;
@@ -126,13 +134,8 @@ test.describe('docx round-trip', () => {
       expect(xml).toMatch(/<w:tabs>.*<\/w:tabs>/);
       expect(xml).toContain('w:pos="1417"'); // 25mm in twips
       expect(xml).toContain('w:pos="2835"'); // 50mm in twips
-      const fd = new FormData();
       const buf = await exportDocx(request, doc.id);
-      fd.append('file', new Blob([new Uint8Array(buf)], {
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      }), 't.docx');
-      const imp = await fetch(`${API_URL}/documents/import`, { method: 'POST', body: fd });
-      const imported = await imp.json();
+      const imported = await importDocx(request, buf, 't.docx');
       expect(imported.html).toContain('data-tab-stops="25,50"');
     } finally {
       await doc.dispose();
@@ -145,13 +148,7 @@ test.describe('docx round-trip', () => {
     const { fileURLToPath } = await import('node:url');
     const dir = dirname(fileURLToPath(import.meta.url));
     const buf = readFileSync(join(dir, 'fixtures', 'tabs.docx'));
-    const fd = new FormData();
-    fd.append('file', new Blob([new Uint8Array(buf)], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    }), 'tabs.docx');
-    const imp = await fetch(`${API_URL}/documents/import`, { method: 'POST', body: fd });
-    expect(imp.ok).toBeTruthy();
-    const imported = await imp.json();
+    const imported = await importDocx(request, buf, 'tabs.docx');
     expect(imported.html).toContain('data-tab-stops="25,50"');
     expect(imported.html).toContain('Tabbed names row here.');
   });
@@ -162,13 +159,7 @@ test.describe('docx round-trip', () => {
     const { fileURLToPath } = await import('node:url');
     const dir = dirname(fileURLToPath(import.meta.url));
     const buf = readFileSync(join(dir, 'fixtures', 'pagebreak.docx'));
-    const fd = new FormData();
-    fd.append('file', new Blob([new Uint8Array(buf)], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    }), 'pagebreak.docx');
-    const imp = await fetch(`${API_URL}/documents/import`, { method: 'POST', body: fd });
-    expect(imp.ok).toBeTruthy();
-    const imported = await imp.json();
+    const imported = await importDocx(request, buf, 'pagebreak.docx');
     expect(imported.html).toContain('Before the hard break.');
     expect(imported.html).toContain('<br/>');
     expect(imported.html).toContain('After the hard break.');
@@ -180,13 +171,7 @@ test.describe('docx round-trip', () => {
     const { fileURLToPath } = await import('node:url');
     const dir = dirname(fileURLToPath(import.meta.url));
     const buf = readFileSync(join(dir, 'fixtures', 'headers.docx'));
-    const fd = new FormData();
-    fd.append('file', new Blob([new Uint8Array(buf)], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    }), 'headers.docx');
-    const imp = await fetch(`${API_URL}/documents/import`, { method: 'POST', body: fd });
-    expect(imp.ok).toBeTruthy();
-    const imported = await imp.json();
+    const imported = await importDocx(request, buf, 'headers.docx');
     expect(imported.html).toContain('Body under foreign header.');
     const s = typeof imported.settings === 'string' ? JSON.parse(imported.settings) : imported.settings;
     expect(s.headerFooter.header.default).toBe('Foreign header text');

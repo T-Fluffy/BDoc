@@ -8,4 +8,8 @@ public class Document
     public string? Settings { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public Guid? OwnerId { get; set; }
+
+    /// <summary>Not persisted. Set per-request for docs shared with the caller.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool SharedWithMe { get; set; }
 }

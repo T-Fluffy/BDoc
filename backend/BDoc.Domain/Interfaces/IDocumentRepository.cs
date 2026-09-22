@@ -12,4 +12,9 @@ public interface IDocumentRepository
     Task<IEnumerable<DocumentVersion>> GetVersionsAsync(Guid documentId);
     Task<DocumentVersion?> GetVersionAsync(Guid documentId, Guid versionId);
     Task<DocumentVersion> CreateVersionAsync(DocumentVersion version);
+    Task<IEnumerable<DocumentShare>> GetSharesAsync(Guid documentId);
+    Task<DocumentShare?> GetShareAsync(Guid documentId, Guid userId);
+    Task<HashSet<Guid>> GetSharedDocumentIdsAsync(Guid userId);
+    Task<DocumentShare> UpsertShareAsync(DocumentShare share);
+    Task RevokeShareAsync(Guid documentId, Guid userId);
 }

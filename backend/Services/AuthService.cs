@@ -25,6 +25,9 @@ public class AuthService
     public async Task<User?> FindByEmailAsync(string email) =>
         await _db.Users.FirstOrDefaultAsync(u => u.Email == email.ToLowerInvariant());
 
+    public async Task<User?> FindByIdAsync(Guid id) =>
+        await _db.Users.FindAsync(id);
+
     public async Task<User> RegisterAsync(string email, string password)
     {
         email = email.ToLowerInvariant().Trim();

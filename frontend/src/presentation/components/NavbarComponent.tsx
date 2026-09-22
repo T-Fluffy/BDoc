@@ -65,8 +65,10 @@ interface NavbarProps {
   onWordCount?: () => void;
   onHelp?: () => void;
   onVersionHistory?: () => void;
+  onShare?: () => void;
   title?: string;
   onTitleChange?: (value: string) => void;
+  titleReadOnly?: boolean;
   titleStatus?: ReactNode;
   onImageUpload?: () => void;
   onInsertToc?: () => void;
@@ -97,8 +99,10 @@ export default function NavbarComponent({
   onWordCount,
   onHelp,
   onVersionHistory,
+  onShare,
   title,
   onTitleChange,
+  titleReadOnly,
   titleStatus,
   onImageUpload,
   onInsertToc,
@@ -263,7 +267,8 @@ export default function NavbarComponent({
                 placeholder="Untitled document"
                 aria-label="Document title"
                 spellCheck={false}
-                className="w-full bg-transparent text-lg font-medium text-ink placeholder:text-ink-faint rounded px-1 -mx-1 border border-transparent hover:border-[var(--border)] focus:border-[var(--border-strong)] focus:outline-none transition-colors truncate"
+                readOnly={titleReadOnly}
+                className={`w-full bg-transparent text-lg font-medium text-ink placeholder:text-ink-faint rounded px-1 -mx-1 border border-transparent hover:border-[var(--border)] focus:border-[var(--border-strong)] focus:outline-none transition-colors truncate ${titleReadOnly ? 'opacity-70 pointer-events-none' : ''}`}
               />
               {titleStatus && (
                 <div className="text-[11px] leading-tight text-ink-faint truncate px-1">{titleStatus}</div>
@@ -607,6 +612,7 @@ export default function NavbarComponent({
             onOpen={() => setMenu('tools')}
             onClose={closeMenu}
             items={[
+              ...(onShare ? [{ key: 'share', label: 'Share…', action: () => { onShare(); closeMenu(); } }] : []),
               { key: 'wc', label: 'Word count…', action: () => { onWordCount?.(); closeMenu(); } },
               { key: 'find', label: 'Find and replace…', shortcut: 'Ctrl+H', action: () => { onFindReplace?.(); closeMenu(); } },
               ...(onVersionHistory ? [{ key: 'vh', label: 'Version history', action: () => { onVersionHistory(); closeMenu(); } }] : []),

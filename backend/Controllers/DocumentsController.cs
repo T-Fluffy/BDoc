@@ -13,10 +13,12 @@ namespace BDoc.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly IDocumentRepository _repository;
+    private readonly AuthService _auth;
 
-    public DocumentsController(IDocumentRepository repository)
+    public DocumentsController(IDocumentRepository repository, AuthService auth)
     {
         _repository = repository;
+        _auth = auth;
     }
 
     private Guid? CurrentUserId()
@@ -25,21 +27,27 @@ public class DocumentsController : ControllerBase
         return Guid.TryParse(val, out var g) ? g : null;
     }
 
-    private bool CanAccess(Document doc)
+    /// <summary>"owner", "editor", "viewer", or null (no access).</summary>
+    private async Task<string?> AccessLevelAsync(Document doc, Guid? uid)
     {
-        var uid = CurrentUserId();
-        if (uid is null) return false;
-        return doc.OwnerId == uid;
+        if (uid is null) return null;
+        if (doc.OwnerId == uid) return "owner";
+        var share = await _repository.GetShareAsync(doc.Id, uid.Value);
+        return share?.Permission;
     }
+
+    private bool IsOwner(Document doc, Guid? uid) => uid is not null && doc.OwnerId == uid;
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
         var uid = CurrentUserId();
         if (uid is null) return Unauthorized();
+        var sharedIds = await _repository.GetSharedDocumentIdsAsync(uid.Value);
         var all = await _repository.GetAllAsync();
-        var mine = all.Where(d => d.OwnerId == uid);
-        return Ok(mine);
+        var visible = all.Where(d => d.OwnerId == uid || sharedIds.Contains(d.Id)).ToList();
+        foreach (var d in visible) d.SharedWithMe = d.OwnerId != uid;
+        return Ok(visible);
     }
 
     [HttpGet("{id}")]
@@ -48,7 +56,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var doc = await _repository.GetByIdAsync(id);
-            if (!CanAccess(doc)) return Forbid();
+            if (await AccessLevelAsync(doc, CurrentUserId()) is null) return Forbid();
             return Ok(doc);
         }
         catch (Exception ex)
@@ -63,6 +71,8 @@ public class DocumentsController : ControllerBase
         var uid = CurrentUserId();
         if (uid is null) return Unauthorized();
         doc.OwnerId = uid;
+        // Clients may send local-offset timestamps; Postgres requires UTC.
+        doc.UpdatedAt = doc.UpdatedAt.Kind == DateTimeKind.Utc ? doc.UpdatedAt : doc.UpdatedAt.ToUniversalTime();
         await _repository.CreateAsync(doc);
         return CreatedAtAction(nameof(Get), new { id = doc.Id }, doc);
     }
@@ -74,8 +84,9 @@ public class DocumentsController : ControllerBase
         try
         {
             var existing = await _repository.GetByIdAsync(id);
-            if (!CanAccess(existing)) return Forbid();
-            updatedDoc.OwnerId = existing.OwnerId ?? CurrentUserId();
+            // OwnerId is never transferred from the client.
+            updatedDoc.OwnerId = existing.OwnerId;
+            if (await AccessLevelAsync(existing, CurrentUserId()) is not ("owner" or "editor")) return Forbid();
             await _repository.UpdateAsync(updatedDoc);
             return NoContent();
         }
@@ -91,7 +102,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var doc = await _repository.GetByIdAsync(id);
-            if (!CanAccess(doc)) return Forbid();
+            if (!IsOwner(doc, CurrentUserId())) return Forbid();
             await _repository.DeleteAsync(id);
             return NoContent();
         }
@@ -105,7 +116,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> Export(Guid id)
     {
         var doc = await _repository.GetByIdAsync(id);
-        if (!CanAccess(doc)) return Forbid();
+        if (await AccessLevelAsync(doc, CurrentUserId()) is null) return Forbid();
         var bytes = await DocxService.ToDocxAsync(doc.Content, doc.Settings);
         return File(
             bytes,
@@ -127,7 +138,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> GetVersions(Guid id)
     {
         var doc = await _repository.GetByIdAsync(id);
-        if (!CanAccess(doc)) return Forbid();
+        if (await AccessLevelAsync(doc, CurrentUserId()) is null) return Forbid();
         return Ok(await _repository.GetVersionsAsync(id));
     }
 
@@ -137,7 +148,7 @@ public class DocumentsController : ControllerBase
         var version = await _repository.GetVersionAsync(id, versionId);
         if (version is null) return NotFound("Version not found");
         var doc = await _repository.GetByIdAsync(id);
-        if (!CanAccess(doc)) return Forbid();
+        if (await AccessLevelAsync(doc, CurrentUserId()) is not ("owner" or "editor")) return Forbid();
         // Snapshot current before restore.
         await _repository.CreateVersionAsync(new DocumentVersion
         {
@@ -152,5 +163,70 @@ public class DocumentsController : ControllerBase
         doc.Settings = version.Settings;
         await _repository.UpdateAsync(doc);
         return Ok(doc);
+    }
+
+    public record ShareRequest(string Email, string Permission);
+
+    [HttpGet("{id}/access")]
+    public async Task<IActionResult> GetAccess(Guid id)
+    {
+        Document doc;
+        try { doc = await _repository.GetByIdAsync(id); }
+        catch (Exception ex) { return NotFound(ex.Message); }
+        var level = await AccessLevelAsync(doc, CurrentUserId());
+        if (level is null) return Forbid();
+        return Ok(new { level });
+    }
+
+    [HttpGet("{id}/shares")]
+    public async Task<IActionResult> GetShares(Guid id)
+    {
+        Document doc;
+        try { doc = await _repository.GetByIdAsync(id); }
+        catch (Exception ex) { return NotFound(ex.Message); }
+        if (!IsOwner(doc, CurrentUserId())) return Forbid();
+        var shares = await _repository.GetSharesAsync(id);
+        var result = new List<object>();
+        foreach (var s in shares)
+        {
+            var user = await _auth.FindByIdAsync(s.SharedWithUserId);
+            if (user is null) continue;
+            result.Add(new { userId = s.SharedWithUserId, email = user.Email, permission = s.Permission });
+        }
+        return Ok(result);
+    }
+
+    [HttpPost("{id}/shares")]
+    public async Task<IActionResult> AddShare(Guid id, ShareRequest req)
+    {
+        var permission = req.Permission?.ToLowerInvariant();
+        if (permission is not ("viewer" or "editor"))
+            return BadRequest("Permission must be 'viewer' or 'editor'");
+        Document doc;
+        try { doc = await _repository.GetByIdAsync(id); }
+        catch (Exception ex) { return NotFound(ex.Message); }
+        var uid = CurrentUserId();
+        if (!IsOwner(doc, uid)) return Forbid();
+        var user = await _auth.FindByEmailAsync(req.Email);
+        if (user is null) return NotFound("No user with that email");
+        if (user.Id == uid) return BadRequest("Document is already yours");
+        var share = await _repository.UpsertShareAsync(new DocumentShare
+        {
+            DocumentId = id,
+            SharedWithUserId = user.Id,
+            Permission = permission,
+        });
+        return Ok(new { userId = user.Id, email = user.Email, permission = share.Permission });
+    }
+
+    [HttpDelete("{id}/shares/{userId}")]
+    public async Task<IActionResult> RevokeShare(Guid id, Guid userId)
+    {
+        Document doc;
+        try { doc = await _repository.GetByIdAsync(id); }
+        catch (Exception ex) { return NotFound(ex.Message); }
+        if (!IsOwner(doc, CurrentUserId())) return Forbid();
+        await _repository.RevokeShareAsync(id, userId);
+        return NoContent();
     }
 }

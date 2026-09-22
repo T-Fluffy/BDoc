@@ -5,6 +5,7 @@ interface Props {
   docId: string;
   onClose: () => void;
   onRestored: () => void;
+  readOnly?: boolean;
 }
 
 function timeAgo(s: string): string {
@@ -19,7 +20,7 @@ function timeAgo(s: string): string {
   return `${days}d ago`;
 }
 
-export default function VersionHistoryDialog({ docId, onClose, onRestored }: Props) {
+export default function VersionHistoryDialog({ docId, onClose, onRestored, readOnly }: Props) {
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<DocumentVersion | null>(null);
@@ -94,13 +95,15 @@ export default function VersionHistoryDialog({ docId, onClose, onRestored }: Pro
               <>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-ink">Preview — {new Date(selected.createdAt).toLocaleString()}</h3>
-                  <button
-                    onClick={handleRestore}
-                    disabled={restoring}
-                    className="px-3 py-1.5 rounded-lg text-sm bg-accent text-accent-contrast hover:bg-accent-hover disabled:opacity-50 transition-colors"
-                  >
-                    {restoring ? 'Restoring…' : 'Restore this version'}
-                  </button>
+                  {!readOnly && (
+                    <button
+                      onClick={handleRestore}
+                      disabled={restoring}
+                      className="px-3 py-1.5 rounded-lg text-sm bg-accent text-accent-contrast hover:bg-accent-hover disabled:opacity-50 transition-colors"
+                    >
+                      {restoring ? 'Restoring…' : 'Restore this version'}
+                    </button>
+                  )}
                 </div>
                 <div className="prose max-w-none text-sm border rounded-lg p-3 bg-surface max-h-[45vh] overflow-auto" dangerouslySetInnerHTML={{ __html: selected.content || '<p><em>(empty)</em></p>' }} />
               </>

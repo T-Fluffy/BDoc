@@ -66,6 +66,8 @@ public class DocumentRepository : IDocumentRepository
         var doc = await _context.Documents.FindAsync(id);
         if (doc != null)
         {
+            var shares = await _context.DocumentShares.Where(s => s.DocumentId == id).ToListAsync();
+            _context.DocumentShares.RemoveRange(shares);
             _context.Documents.Remove(doc);
             await _context.SaveChangesAsync();
         }
@@ -85,5 +87,45 @@ public class DocumentRepository : IDocumentRepository
         _context.DocumentVersions.Add(version);
         await _context.SaveChangesAsync();
         return version;
+    }
+
+    public async Task<IEnumerable<DocumentShare>> GetSharesAsync(Guid documentId) =>
+        await _context.DocumentShares
+            .Where(s => s.DocumentId == documentId)
+            .OrderBy(s => s.CreatedAt)
+            .ToListAsync();
+
+    public async Task<DocumentShare?> GetShareAsync(Guid documentId, Guid userId) =>
+        await _context.DocumentShares
+            .FirstOrDefaultAsync(s => s.DocumentId == documentId && s.SharedWithUserId == userId);
+
+    public async Task<HashSet<Guid>> GetSharedDocumentIdsAsync(Guid userId) =>
+        (await _context.DocumentShares
+            .Where(s => s.SharedWithUserId == userId)
+            .Select(s => s.DocumentId)
+            .ToListAsync()).ToHashSet();
+
+    public async Task<DocumentShare> UpsertShareAsync(DocumentShare share)
+    {
+        var existing = await GetShareAsync(share.DocumentId, share.SharedWithUserId);
+        if (existing is null)
+        {
+            _context.DocumentShares.Add(share);
+            await _context.SaveChangesAsync();
+            return share;
+        }
+        existing.Permission = share.Permission;
+        await _context.SaveChangesAsync();
+        return existing;
+    }
+
+    public async Task RevokeShareAsync(Guid documentId, Guid userId)
+    {
+        var existing = await GetShareAsync(documentId, userId);
+        if (existing is not null)
+        {
+            _context.DocumentShares.Remove(existing);
+            await _context.SaveChangesAsync();
+        }
     }
 }
